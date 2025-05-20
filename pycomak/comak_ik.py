@@ -13,6 +13,22 @@ from pycomak.defaults import muscle_length_dict as MUSCLE_LENGTH
 from pycomak import COMAKBASE
 
 def update_slack_lengths(model, new_model_file=None, slack_length_dict=SLACK_LENGTH, muscle_length_dict=MUSCLE_LENGTH):
+    """
+    Updates ligament slack lengths and muscle optimal fiber lengths and tendon slack lengths
+    based on the current model state and provided dictionaries.
+
+    Args:
+        model (osim.Model or str): The OpenSim model object or path to the model file.
+        new_model_file (str, optional): Path to save the updated model. If None, the model is not saved.
+            Defaults to None.
+        slack_length_dict (dict, optional): Dictionary mapping ligament names to their reference strains.
+            Defaults to SLACK_LENGTH from pycomak.defaults.
+        muscle_length_dict (dict, optional): Dictionary mapping muscle names to their reference lengths.
+            Defaults to MUSCLE_LENGTH from pycomak.defaults.
+
+    Returns:
+        osim.Model: The updated OpenSim model object.
+    """
     if isinstance(model, str):
         model = osim.Model(model)
     
@@ -53,6 +69,24 @@ def update_slack_lengths(model, new_model_file=None, slack_length_dict=SLACK_LEN
     return model
 
 def modifyCoordinates(model_update, ik_result_dir, newmodel, slack_length_dict=SLACK_LENGTH, muscle_length_dict=MUSCLE_LENGTH): 
+    """
+    Modifies the default coordinate values of a model based on the results of a
+    secondary constraint settling simulation and updates slack lengths.
+
+    The function reads coordinate values from a 'secondary_constraint_settle_states.sto' file,
+    adjusts the model's default coordinate values to be within their range if necessary,
+    and then calls `update_slack_lengths` to update ligament and muscle properties.
+
+    Args:
+        model_update (osim.Model): The OpenSim model object to be modified.
+        ik_result_dir (str): Directory containing the IK results, specifically the
+            '_secondary_constraint_settle_states.sto' file.
+        newmodel (str): Path to save the modified model with updated slack lengths.
+        slack_length_dict (dict, optional): Dictionary for slack length updates. 
+            Defaults to SLACK_LENGTH from pycomak.defaults.
+        muscle_length_dict (dict, optional): Dictionary for muscle length updates. 
+            Defaults to MUSCLE_LENGTH from pycomak.defaults.
+    """
     
     # Setting the State
     table = osim.TimeSeriesTable(os.path.join(ik_result_dir, '_secondary_constraint_settle_states.sto'))
@@ -96,6 +130,17 @@ def modifyCoordinates(model_update, ik_result_dir, newmodel, slack_length_dict=S
     
     
 class COMAKInverseKinematics(COMAKBASE):
+    """
+    A class to perform Concurrent Optimization of Muscle Activations and Kinematics (COMAK)
+    Inverse Kinematics (IK).
+
+    This class sets up and runs the COMAK IK tool, which involves:
+    1. A settling simulation to adjust model parameters (e.g., ligament slack lengths).
+    2. A sweep simulation to generate constraint functions.
+    3. An inverse kinematics step to calculate joint angles based on marker data.
+
+    It handles model updates, logging, and saving of settings and results.
+    """
     def __init__(
         self,
         base_model_path,
@@ -125,6 +170,51 @@ class COMAKInverseKinematics(COMAKBASE):
         slack_length_dict=SLACK_LENGTH,
         muscle_length_dict=MUSCLE_LENGTH
     ):
+        """
+        Initializes the COMAKInverseKinematics class.
+
+        Args:
+            base_model_path (str): Path to the base OpenSim model file.
+            results_dir (str): Directory to save the results and intermediate files.
+            stop_time_ik (float): Stop time for the IK analysis.
+            start_time_ik (float): Start time for the IK analysis.
+            markerset_file (str): Path to the marker set file (.xml or .trc).
+            start_pad (float, optional): Time padding at the start of the IK. Defaults to 0.0.
+            stop_pad (float, optional): Time padding at the end of the IK. Defaults to 0.0.
+            settle_sim_reps (int, optional): Number of repetitions for the settling simulation.
+                Defaults to 5.
+            secondary_constraint_sim_sweep_time (float, optional): Duration of the sweep simulation for
+                secondary constraints. Defaults to 3.0.
+            secondary_coupled_coordinate_stop_value (float, optional): Stop value for the coupled coordinate
+                during the sweep simulation. Defaults to 100.
+            secondary_coupled_coordinate (str, optional): Path to the secondary coupled coordinate.
+                Defaults to '/jointset/knee_r/knee_flex_r'.
+            secondary_constraint_sim_settle_threshold (float, optional): Settle threshold for the
+                secondary constraint simulation. Defaults to 1e-4.
+            secondary_constraint_sim_integrator_accuracy (float, optional): Integrator accuracy for the
+                secondary constraint simulation. Defaults to 1e-3.
+            secondary_constraint_sim_internal_step_limit (int, optional): Internal step limit for the
+                secondary constraint simulation. Defaults to 10_000.
+            constraint_function_num_interpolation_points (int, optional): Number of interpolation points
+                for the constraint function. Defaults to 60.
+            print_secondary_constraint_sim_results (bool, optional): Whether to print results of the
+                secondary constraint simulation. Defaults to True.
+            report_errors (bool, optional): Whether to report marker errors. Defaults to True.
+            report_marker_locations (bool, optional): Whether to report marker locations. Defaults to False.
+            ik_constraint_weight (float, optional): Weight for IK constraints. Defaults to 100.
+            ik_accuracy (float, optional): Accuracy for the IK solver. Defaults to 1e-5.
+            prescribed_coordinates (dict, optional): Dictionary of prescribed coordinates.
+                Defaults to PRESCRIBED_COORDINATES from pycomak.defaults.
+            primary_coordinates (dict, optional): Dictionary of primary coordinates.
+                Defaults to PRIMARY_COORDINATES from pycomak.defaults.
+            secondary_coordinates (dict, optional): Dictionary of secondary coordinates.
+                Defaults to SECONDARY_COORDINATES from pycomak.defaults.
+            log_level (str, optional): Logging level for OpenSim logger. Defaults to "Trace".
+            slack_length_dict (dict, optional): Dictionary for ligament slack length updates.
+                Defaults to SLACK_LENGTH from pycomak.defaults.
+            muscle_length_dict (dict, optional): Dictionary for muscle length updates.
+                Defaults to MUSCLE_LENGTH from pycomak.defaults.
+        """
         # define folders to save results
         super().__init__(results_dir)
                 
@@ -219,6 +309,17 @@ class COMAKInverseKinematics(COMAKBASE):
             json.dump(settings_dict, f, indent=4)
     
     def setup_generic_comakik_settings(self, secondary_coupled_coordinate=None):
+        """
+        Sets up generic settings for the COMAKInverseKinematicsTool.
+
+        This includes setting secondary coordinates, simulation parameters (settle threshold,
+        integrator accuracy, step limits), constraint function parameters, marker file,
+        output motion file, time range, error reporting, IK task weights, and accuracy.
+
+        Args:
+            secondary_coupled_coordinate (str, optional): Path to the secondary coupled coordinate.
+                If provided, updates the class attribute. Defaults to None.
+        """
         if secondary_coupled_coordinate is not None:
             self.secondary_coupled_coordinate = secondary_coupled_coordinate
         
@@ -249,6 +350,15 @@ class COMAKInverseKinematics(COMAKBASE):
         self.comak_ik.printToXML(self.save_xml_path)
     
     def perform_settle_sim(self):
+        """
+        Performs the settling simulation part of the COMAK IK process.
+
+        This simulation adjusts model parameters (e.g., ligament slack lengths)
+        iteratively. It initializes slack lengths in the first repetition and then
+        runs the COMAKInverseKinematicsTool in a settle-only mode for the specified
+        number of repetitions, updating model coordinates after each run.
+        Geometry files are also copied to the results directory.
+        """
         self.comak_ik.set_perform_secondary_constraint_sim(True)
         self.comak_ik.set_secondary_constraint_sim_sweep_time(0)
         self.comak_ik.set_secondary_coupled_coordinate_start_value(0)
@@ -305,6 +415,14 @@ class COMAKInverseKinematics(COMAKBASE):
             modifyCoordinates(model_update_1, self.ik_result_dir, self.settle_sim_intermed_model_filepath, slack_length_dict=self.slack_length_dict, muscle_length_dict=self.muscle_length_dict)
 
     def perform_sweep_sim(self):
+        """
+        Performs the sweep simulation part of the COMAK IK process.
+
+        This simulation generates constraint functions for secondary coordinates by sweeping
+        the coupled coordinate through its range. It uses the model from the settle simulation
+        and runs the COMAKInverseKinematicsTool in a sweep-only mode.
+        After the sweep, model coordinates are updated based on the results.
+        """
         self.comak_ik.set_perform_inverse_kinematics(False)
         self.comak_ik.set_perform_secondary_constraint_sim(True)
 
@@ -331,6 +449,13 @@ class COMAKInverseKinematics(COMAKBASE):
         modifyCoordinates(model_update_1, self.ik_result_dir, self.final_model_path, slack_length_dict=self.slack_length_dict, muscle_length_dict=self.muscle_length_dict)
     
     def perform_inverse_kinematics(self):
+        """
+        Performs the final inverse kinematics (IK) step of the COMAK IK process.
+
+        This step uses the model and constraint functions generated from the settle and
+        sweep simulations to compute joint kinematics based on marker data.
+        The COMAKInverseKinematicsTool is run in IK-only mode.
+        """
         
         self.comak_ik.set_constrained_model_file(
             os.path.join(self.ik_result_dir, self.sweep_sim_constrained_model_filename)

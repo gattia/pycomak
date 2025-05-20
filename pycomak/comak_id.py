@@ -5,6 +5,14 @@ import opensim as osim
 from pycomak import COMAKBASE
 
 class COMAKInverseDynamics(COMAKBASE):
+    """
+    A class to perform inverse dynamics using OpenSim's InverseDynamicsTool,
+    configured for use within the COMAK workflow.
+
+    This class sets up the InverseDynamicsTool with specified parameters,
+    saves the settings to XML and JSON files, and provides a method to run
+    the inverse dynamics analysis.
+    """
     def __init__(
         self,
         results_dir,
@@ -15,6 +23,18 @@ class COMAKInverseDynamics(COMAKBASE):
         low_pass_cutoff=6,
         
     ):
+        """
+        Initializes the COMAKInverseDynamics class.
+
+        Args:
+            results_dir (str): Directory to save the results.
+            start_time (float): Start time for the analysis.
+            stop_time (float): Stop time for the analysis.
+            model_path (str): Path to the OpenSim model file (.osim).
+            external_loads_file (str): Path to the external loads file.
+            low_pass_cutoff (float, optional): Cutoff frequency for the low-pass
+                filter applied to coordinates. Defaults to 6.
+        """
         super().__init__(results_dir)
         
         save_xml_path = os.path.join(self.inputs_dir, 'comak_inverse_dynamics_settings.xml')
@@ -53,6 +73,12 @@ class COMAKInverseDynamics(COMAKBASE):
             json.dump(settings, f, indent=4)
             
     def run(self):
+        """
+        Runs the inverse dynamics analysis.
+
+        Prints a message indicating the start and end times of the analysis
+        before executing the OpenSim InverseDynamicsTool's run method.
+        """
         print(f"Running Inverse Dynamics from {self.start_time} to {self.stop_time}")
         self.inverse_dynamics.run()
         

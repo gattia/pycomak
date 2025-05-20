@@ -5,6 +5,17 @@ from pycomak import COMAKBASE
 
 
 class JointMechanics(COMAKBASE):
+    """
+    A class to set up and run OpenSim's JointMechanicsTool, typically after a COMAK simulation.
+
+    This class configures the JointMechanicsTool to analyze forces, activations, and kinematics
+    from a COMAK simulation. It sets input files (states, forces, activations from COMAK results),
+    output directory, time range, and various analysis options (contacts, ligaments, muscles,
+    geometry output, etc.).
+
+    The settings are saved to an XML file, and a `run` method is provided to execute
+    the joint mechanics analysis.
+    """
     def __init__(
         self,
         results_dir,
@@ -13,6 +24,17 @@ class JointMechanics(COMAKBASE):
         end_time,
         debug_level=0,
     ):
+        """
+        Initializes the JointMechanics class.
+
+        Args:
+            results_dir (str): The base directory where COMAK results are stored and where
+                joint mechanics results will be saved (in a 'joint-mechanics' subdirectory).
+            model_path (str): Path to the OpenSim model file (.osim).
+            start_time (float): Start time for the joint mechanics analysis.
+            end_time (float): End time for the joint mechanics analysis.
+            debug_level (int, optional): Debug level for JointMechanicsTool. Defaults to 0.
+        """
         super().__init__(results_dir)
         save_xml_path = os.path.join(self.inputs_dir, 'joint_mechanics_settings.xml')
     
@@ -64,6 +86,11 @@ class JointMechanics(COMAKBASE):
         self.jnt_mech.printToXML(save_xml_path)
 
     def run(self):
+        """
+        Runs the JointMechanicsTool analysis.
+
+        Prints messages indicating the start and completion of the JointMechanicsTool execution.
+        """
         print('Running JointMechanicsTool...')
         self.jnt_mech.run()
         print('Finished JointMechanicsTool!')

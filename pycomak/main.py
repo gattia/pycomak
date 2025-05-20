@@ -1,7 +1,40 @@
 import os
 
 class COMAKBASE:
+    """
+    A base class for COMAK-related processing tools (IK, ID, COMAK, JointMechanics).
+
+    This class primarily initializes a standardized directory structure for storing
+    inputs, logs, and results for various stages of a COMAK workflow. It also defines
+    some standard filenames used by the COMAK tools.
+
+    Attributes:
+        results_dir (str): The main directory for all results.
+        log_dir (str): Subdirectory for log files.
+        ik_result_dir (str): Subdirectory for COMAK Inverse Kinematics results.
+        inputs_dir (str): Subdirectory for input settings files.
+        id_result_dir (str): Subdirectory for COMAK Inverse Dynamics results.
+        comak_result_dir (str): Subdirectory for main COMAK tool results.
+        jnt_mech_result_dir (str): Subdirectory for Joint Mechanics tool results.
+        jnt_mech_paraview_dir (str): Subdirectory within joint mechanics for Paraview files.
+        graphics_dir (str): Subdirectory for generated graphics/plots.
+        settle_sim_intermed_filename (str): Standard filename for intermediate model in IK settle sim.
+        settle_sim_constrained_model_filename (str): Standard filename for constrained model in IK settle sim.
+        settle_sim_secondary_constraint_function_filename (str): Standard filename for constraint functions in IK settle sim.
+        sweep_sim_constrained_model_filename (str): Standard filename for constrained model in IK sweep sim.
+        sweep_sim_secondary_constraint_function_filename (str): Standard filename for constraint functions in IK sweep sim.
+        settle_and_sweep_sim_filename (str): Standard filename for the final model after IK settle and sweep.
+        comak_id_results_filename (str): Standard filename for Inverse Dynamics results.
+        comak_ik_filename (str): Standard filename for COMAK IK motion output.
+    """
     def __init__(self, results_dir):
+        """
+        Initializes the COMAKBASE class, creating result directories if they don't exist.
+
+        Args:
+            results_dir (str): The root directory where all COMAK-related subdirectories
+                for results, inputs, and logs will be created.
+        """
         # define folders to save results
         self.results_dir = results_dir
         self.log_dir = os.path.join(self.results_dir, 'logs')

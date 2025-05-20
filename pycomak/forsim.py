@@ -92,6 +92,20 @@ def create_save_sto(
     dict_data,
     path_save
 ):
+    """
+    Creates an OpenSim TimeSeriesTable from a dictionary of data and saves it as a .sto file.
+
+    Args:
+        dict_data (dict): A dictionary where keys are column labels (str) and values are
+            1D numpy arrays of data. Must include a 'time' key with the time vector.
+        path_save (str): The full path (including filename) to save the .sto file.
+            Must end with '.sto'.
+
+    Raises:
+        AssertionError: If 'time' key is missing in `dict_data` or if `path_save`
+            does not end with '.sto'.
+        AssertionError: If input types for TimeSeriesTable are incorrect.
+    """
     assert 'time' in dict_data.keys(), 'Time data is missing'
     assert path_save.endswith('.sto'), 'File extension must be .sto'
     
@@ -131,6 +145,30 @@ def run_forsim(
     use_muscle_physiology=True,
     unconstrianed_coordinates=UNCONSTRAINED_COORDINATES,
 ):
+    """
+    Runs a forward simulation using OpenSim's ForsimTool.
+
+    Configures and executes ForsimTool with specified model, kinematics, muscle controls,
+    and simulation settings. Saves ForsimTool settings to an XML file.
+
+    Args:
+        path_model (str): Path to the OpenSim model file (.osim).
+        folder_save_results (str): Directory to save the simulation results and settings file.
+        integrator_accuracy (float, optional): Accuracy for the integrator. Defaults to 1e-2.
+            (Note: Recommended 1e-6 for research).
+        constant_muscle_control (float, optional): Constant control value for all muscles
+            if not overridden by actuator input file or default activation. Defaults to 0.02.
+        override_default_muscle_activation (float, optional): Value to override default muscle activation.
+            Defaults to 0.02.
+        use_activation_dynamics (bool, optional): Whether to use activation dynamics for muscles.
+            Defaults to False.
+        use_tendon_compliance (bool, optional): Whether to use tendon compliance for muscles.
+            Defaults to False.
+        use_muscle_physiology (bool, optional): Whether to use full muscle physiology (activation dynamics,
+            pennation, force-length-velocity). Defaults to True.
+        unconstrianed_coordinates (list, optional): List of unconstrained coordinate paths for the simulation.
+            Defaults to UNCONSTRAINED_COORDINATES from module constants.
+    """
     ## Perform Simulation with ForsimTool
     forsim = osim.ForsimTool()
     forsim.set_model_file(path_model)
@@ -164,6 +202,24 @@ def run_joint_mechanics_tool(
     attached_geometry_bodies=ATTACHED_GEOMETRY_BODIES,
     write_vtp_files=False,
 ):
+    """
+    Runs OpenSim's JointMechanicsTool to analyze simulation results.
+
+    Configures and executes JointMechanicsTool to compute various biomechanical outputs
+    (contact forces, ligament forces, muscle outputs, etc.) from a forward simulation.
+    Saves JointMechanicsTool settings to an XML file and results to a subdirectory.
+
+    Args:
+        path_model (str): Path to the OpenSim model file (.osim).
+        folder_save_results (str): Directory containing the input states file ('_states.sto')
+            and where the joint mechanics results will be saved in a 'joint_mechanics' subdirectory.
+        use_activation_dynamics (bool, optional): Corresponds to ForsimTool setting. Defaults to False.
+        use_tendon_compliance (bool, optional): Corresponds to ForsimTool setting. Defaults to False.
+        use_muscle_physiology (bool, optional): Corresponds to ForsimTool setting. Defaults to True.
+        attached_geometry_bodies (list, optional): List of body names with attached geometry for analysis.
+            Defaults to ATTACHED_GEOMETRY_BODIES from module constants.
+        write_vtp_files (bool, optional): Whether to write VTP files for visualization. Defaults to False.
+    """
     jnt_mech = osim.JointMechanicsTool()
     jnt_mech.set_model_file(path_model)
     jnt_mech.set_input_states_file(os.path.join(folder_save_results, '_states.sto'))
@@ -196,6 +252,22 @@ def run_joint_mechanics_tool(
     jnt_mech.run()
 
 def get_total_ligament_force(jam, ligament_name):
+    """
+    Calculates the total force for a given ligament from JamAnalysis data.
+
+    Sums the 'total_force' from all fibers belonging to the specified ligament.
+
+    Args:
+        jam (JamAnalysis): An instance of the JamAnalysis class containing loaded
+            joint mechanics data.
+        ligament_name (str): The base name of the ligament (e.g., 'ACL', 'MCL').
+
+    Returns:
+        numpy.ndarray: A 1D array of the total force for the ligament over time.
+
+    Raises:
+        ValueError: If the ligament is not found in the forceset.
+    """
     fibers = [x for x in jam.forceset['Blankevoort1991Ligament'].keys() if ligament_name in x]
     if len(fibers) == 0:
         raise ValueError('Ligament not found in forceset')
@@ -205,6 +277,28 @@ def get_total_ligament_force(jam, ligament_name):
     return data
 
 def analyze_criteria(jam, criteria_dict, criteria_type, passed=True):
+    """
+    Analyzes data from JamAnalysis against specified criteria.
+
+    For a given `criteria_type` ('ligaments' or 'coords'), this function retrieves
+    the relevant data from the `jam` object. It then checks if the data's peak-to-peak
+    range, maximum value, or minimum value exceed thresholds defined in `criteria_dict`.
+    Results (ptp, min, max) are added to the `criteria_dict`.
+
+    Args:
+        jam (JamAnalysis): An instance of JamAnalysis containing the simulation data.
+        criteria_dict (dict): A dictionary defining the criteria to check. Expected structure:
+            `{'ligaments': {'LIG_NAME': {'max_range': val, 'max': val, 'min': val}}, ...}`
+            `{'coords': {'COORD_NAME': {'max_range': val, 'max': val, 'min': val}}, ...}`
+        criteria_type (str): The type of data to analyze, either 'ligaments' or 'coords'.
+        passed (bool, optional): The current pass/fail status. If any criterion is not met,
+            this will be set to False. Defaults to True.
+
+    Returns:
+        tuple: 
+            - dict: The updated `criteria_dict` with 'ptp_', 'min_', and 'max_' values added for each item.
+            - bool: The updated `passed` status.
+    """
     for name, criteria in criteria_dict[criteria_type].items():
         if criteria_type == 'ligaments':
             data = get_total_ligament_force(jam, ligament_name=name)
@@ -245,6 +339,28 @@ def jam_evaluation(
     list_ligaments_plot=LIGAMENTS,
     fontsize=20
 ):
+    """
+    Performs joint mechanics analysis evaluation using JamAnalysis.
+
+    Loads data from an H5 file, generates plots for secondary kinematics and
+    ligament forces, and evaluates the data against specified criteria using
+    the `analyze_criteria` function.
+
+    Args:
+        path_h5_file (str): Path to the H5 file containing joint mechanics results.
+        folder_save_figs (str): Directory to save the generated plots.
+        dict_criteria (dict): Dictionary defining the criteria for evaluation (passed to `analyze_criteria`).
+        list_kinematics_plot (list, optional): List of coordinate names to plot.
+            Defaults to SECONDARY_COORDINATES from module constants.
+        list_ligaments_plot (list, optional): List of ligament base names to plot.
+            Defaults to LIGAMENTS from module constants.
+        fontsize (int, optional): Fontsize for plot titles and labels. Defaults to 20.
+
+    Returns:
+        tuple:
+            - bool: True if all criteria are passed, False otherwise.
+            - dict: The `dict_criteria` updated with analysis results (ptp, min, max values).
+    """
         
     jam = JamAnalysis()
     jam.jam_analysis([path_h5_file,])
@@ -312,6 +428,16 @@ def jam_evaluation(
     return passed, dict_criteria
 
 class COMAKforsim:
+    """
+    A class to manage and run COMAK-specific forward simulations (Forsim) and subsequent
+    joint mechanics analysis.
+
+    This class handles:
+    - Setting up input files (kinematics.sto, muscles.sto) for ForsimTool.
+    - Running ForsimTool, with an optional timeout.
+    - Running JointMechanicsTool on the ForsimTool results.
+    - Evaluating the joint mechanics results against specified criteria.
+    """
     def __init__(
         self,
         path_model,
@@ -327,6 +453,35 @@ class COMAKforsim:
         unconstrianed_coordinates=UNCONSTRAINED_COORDINATES,
         max_forsim_time=2*60, # 2 minutes
     ):
+        """
+        Initializes the COMAKforsim class.
+
+        Args:
+            path_model (str): Path to the OpenSim model file (.osim).
+            dict_kinematics (dict): Dictionary of kinematics data to be saved as 'kinematics.sto'.
+                Must include a 'time' key.
+            dict_muscles (dict): Dictionary of muscle control/activation data to be saved as 'muscles.sto'.
+                Must include a 'time' key.
+            folder_save_results (str): Directory to save all results and intermediate files.
+            integrator_accuracy (float, optional): Integrator accuracy for ForsimTool. Defaults to 1e-2.
+            use_activation_dynamics (bool, optional): Whether ForsimTool uses activation dynamics.
+                Defaults to False.
+            use_tendon_compliance (bool, optional): Whether ForsimTool uses tendon compliance.
+                Defaults to False.
+            use_muscle_physiology (bool, optional): Whether ForsimTool uses full muscle physiology.
+                Defaults to True.
+            constant_muscle_control (float, optional): Constant muscle control for ForsimTool.
+                Defaults to 0.02.
+            override_default_muscle_activation (float, optional): Override default muscle activation
+                for ForsimTool. Defaults to 0.02.
+            unconstrianed_coordinates (list, optional): List of unconstrained coordinates for ForsimTool.
+                Defaults to UNCONSTRAINED_COORDINATES from module constants.
+            max_forsim_time (int, optional): Maximum allowed time in seconds for the forsim run.
+                Defaults to 120 (2 minutes).
+
+        Raises:
+            ValueError: If `path_model` does not exist.
+        """
         if not os.path.exists(path_model):
             raise ValueError('Model file does not exist')
 
@@ -360,6 +515,16 @@ class COMAKforsim:
         self._evaluation_results = None
     
     def run_forsim(self, max_forsim_time=None):
+        """
+        Runs the ForsimTool simulation with a timeout.
+
+        Args:
+            max_forsim_time (int, optional): Maximum allowed time in seconds for the forsim run.
+                If None, uses the value set during initialization. Defaults to None.
+
+        Returns:
+            bool: True if ForsimTool completes successfully within the timeout, False otherwise.
+        """
         if max_forsim_time is not None:
             self.max_forsim_time = max_forsim_time
         
@@ -384,6 +549,12 @@ class COMAKforsim:
             return False
     
     def run_joint_mechanics_tool(self):
+        """
+        Runs the JointMechanicsTool on the results of the Forsim simulation.
+
+        Uses the settings (activation dynamics, tendon compliance, muscle physiology)
+        defined during the initialization of the COMAKforsim object.
+        """
         
         run_joint_mechanics_tool(
             self.path_model,
@@ -394,6 +565,19 @@ class COMAKforsim:
         )
     
     def jam_evaluation(self, dict_criteria):
+        """
+        Evaluates the joint mechanics results against specified criteria.
+
+        This method should be called after `run_forsim` and `run_joint_mechanics_tool`.
+        It uses the `jam_evaluation` function to perform the analysis.
+
+        Args:
+            dict_criteria (dict): Dictionary defining the criteria for evaluation.
+
+        Returns:
+            bool: True if ForsimTool completed and all criteria are passed, False otherwise.
+                       Returns False immediately if ForsimTool did not complete successfully.
+        """
         
         if not self.forsim_completed:
             print('Forsim Tool did not complete successfully')
@@ -413,5 +597,12 @@ class COMAKforsim:
     # return the evaluation results
     @property
     def evaluation_results(self):
+        """
+        Provides a deep copy of the evaluation results from the last `jam_evaluation` call.
+
+        Returns:
+            dict or None: A deep copy of the dictionary containing evaluation metrics and criteria results,
+                          or None if `jam_evaluation` has not been successfully run.
+        """
         # return a copy of the evaluation results
         return copy.deepcopy(self._evaluation_results)

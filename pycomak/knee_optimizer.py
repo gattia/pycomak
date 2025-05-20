@@ -13,6 +13,19 @@ from nsosim.comak_osim_update import update_patella_location
 
 
 def get_patella_location(path_model):
+    """
+    Retrieves the default patellofemoral (pf_r) joint translation values from an OpenSim model file.
+
+    Parses the XML of the .osim file to find the CustomJoint named 'pf_r' and extracts
+    the default_value for its translational coordinates (pf_tx_r, pf_ty_r, pf_tz_r).
+
+    Args:
+        path_model (str): Path to the OpenSim model file (.osim).
+
+    Returns:
+        numpy.ndarray: A 1D array containing the [x, y, z] default translations of the
+            patellofemoral joint. Returns an empty array or raises an error if not found.
+    """
     parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)) # keep comments
     tree = ET.parse(path_model, parser)
     root = tree.getroot()[0]
@@ -28,6 +41,21 @@ def get_patella_location(path_model):
     return pf_r_position
 
 def update_patella_location_(path_model, path_save_model, update):
+    """
+    Updates the default patellofemoral (pf_r) joint translation values in an OpenSim model file.
+
+    Reads an existing .osim model, gets the current default patella location using
+    `get_patella_location`, adds the `update` vector to these coordinates, and then
+    uses `nsosim.comak_osim_update.update_patella_location` to modify the XML tree.
+    The modified model is then saved to `path_save_model`.
+
+    Args:
+        path_model (str): Path to the source OpenSim model file (.osim).
+        path_save_model (str): Path to save the modified OpenSim model file (.osim).
+            Can be the same as `path_model` to overwrite.
+        update (numpy.ndarray): A 1D array containing the [dx, dy, dz] changes to be
+            applied to the patella's default translational coordinates.
+    """
     parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)) # keep comments
     tree = ET.parse(path_model, parser)
     root = tree.getroot()[0]
@@ -43,7 +71,57 @@ def update_patella_location_(path_model, path_save_model, update):
     tree.write(path_save_model, encoding='utf8',method='xml')
     
 class KneeOptimizer:
+    """
+    Optimizes patella location by iteratively adjusting its default position and evaluating
+    knee joint mechanics using COMAK IK and Forsim simulations.
+
+    The optimization process involves:
+    1. Performing a COMAK IK settle simulation to update ligament slack lengths with the current patella position.
+    2. Running a COMAK Forsim simulation with predefined kinematics and muscle activations.
+    3. Evaluating the Forsim results (e.g., ligament forces, joint translations) against specified criteria.
+    4. If criteria are not met or simulations time out, the patella's default 'ty' (superior-inferior) 
+       position is updated (typically moved inferiorly), and the process repeats.
+
+    The optimization stops if criteria are met, a maximum number of updates is reached,
+    or simulations consistently time out.
+
+    Attributes:
+        path_model_to_update (str): Path to the OpenSim model file to be optimized.
+        results_dir (str): Directory to save intermediate results.
+        markerset_file (str): Path to the markerset file for COMAK IK.
+        dict_kinematics (dict): Prescribed kinematics for Forsim.
+        dict_muscles (dict): Prescribed muscle activations for Forsim.
+        dict_criteria (dict): Criteria for evaluating Forsim results.
+        patella_position_update (numpy.ndarray): Update vector applied to patella position at each step.
+        max_duration (int): Max duration for Forsim simulation (seconds).
+        max_updates (int): Max number of patella position updates.
+        settle_sim_reps (int): Number of repetitions for COMAK IK settle sim.
+        _n_updates (int): Current number of patella position updates made.
+        _list_eval_results (list): Stores evaluation results from each iteration.
+    """
     def __init__(self, path_model_to_update, results_dir, markerset_file, dict_kinematics, dict_muscles, dict_criteria, settle_sim_reps=2, patella_position_update=np.asarray([0, -0.001, 0]), max_duration=45, max_updates=10):
+        """
+        Initializes the KneeOptimizer.
+
+        Args:
+            path_model_to_update (str): Path to the .osim model file that will be iteratively updated.
+            results_dir (str): Directory to store results from IK, Forsim, and evaluations.
+            markerset_file (str): Path to the markerset file (.xml or .trc) for COMAK IK.
+            dict_kinematics (dict): Dictionary of prescribed kinematics for the Forsim simulation
+                (see `COMAKforsim` for format).
+            dict_muscles (dict): Dictionary of prescribed muscle activations for the Forsim simulation
+                (see `COMAKforsim` for format).
+            dict_criteria (dict): Dictionary of criteria to evaluate the Forsim simulation results
+                (see `forsim.jam_evaluation` for format).
+            settle_sim_reps (int, optional): Number of repetitions for the COMAK IK settle simulation.
+                Defaults to 2.
+            patella_position_update (numpy.ndarray, optional): The [dx, dy, dz] vector to update the
+                patella's default position by at each iteration. Defaults to [0, -0.001, 0] (1mm inferiorly).
+            max_duration (int, optional): Maximum duration in seconds for each Forsim simulation run.
+                Defaults to 45.
+            max_updates (int, optional): Maximum number of times the patella position will be updated.
+                Defaults to 10.
+        """
         self.path_model_to_update = path_model_to_update
         self.results_dir = results_dir
         self.markerset_file = markerset_file
@@ -59,6 +137,25 @@ class KneeOptimizer:
         self.settle_sim_intermed_filename = "patella_optimize_settle_sim_intermediate.osim"
 
     def optimize_patella_location(self):
+        """
+        Runs the iterative patella location optimization process.
+
+        The loop continues until success criteria are met, max_updates is reached, or
+        a persistent timeout occurs. 
+
+        The process involves:
+        1. COMAK IK settle simulation (with timeout).
+        2. COMAK Forsim simulation (with timeout).
+        3. Joint mechanics analysis and evaluation against criteria.
+        4. If not successful, updates patella location and repeats.
+
+        Returns:
+            str or None: 
+                - None if optimization was successful.
+                - 'settle_sim_timeout' if the COMAK IK settle simulation timed out persistently.
+                - 'forsim_timeout' if the COMAK Forsim simulation timed out persistently.
+                - 'patella_opt_max_updates' if maximum updates were reached without success.
+        """
         success = False
         while ((not success) and (self._n_updates < self.max_updates)):
             # Update ligament slack lengths
@@ -132,8 +229,23 @@ class KneeOptimizer:
 
     @property
     def list_eval_results(self):
+        """
+        Provides a deep copy of the list of evaluation results from each optimization iteration.
+
+        Each element in the list can be a dictionary of evaluation metrics (if evaluation completed)
+        or a string indicating a timeout ('settle_sim_timeout', 'forsim_timeout').
+
+        Returns:
+            list: A deep copy of the list containing evaluation results or timeout strings.
+        """
         return copy.deepcopy(self._list_eval_results)
 
     @property
     def n_updates(self):
+        """
+        Returns the number of patella position updates performed during the optimization.
+
+        Returns:
+            int: The total count of updates made to the patella's default position.
+        """
         return self._n_updates
