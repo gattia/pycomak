@@ -4,28 +4,36 @@ import os
 import multiprocessing
 
 
-def copy_file_names_with_strings(str_list, path):
+def copy_file_names_with_strings(str_list, path, overwrite=False):
     """
     Copies files matching a list of string patterns from a source path to a 'paraview' subdirectory.
 
     For each string pattern in `str_list`, it finds matching files in `path` using `glob.glob`.
     Each found file is then copied to a 'paraview' subdirectory created within `path`.
-    If the destination file already exists, a message is printed, and the copy is skipped.
+    If the destination file already exists and overwrite is False, a message is printed and the copy is skipped.
 
     Args:
         str_list (list of str): A list of string patterns to match filenames (e.g., ['*.vtp', '*_data.sto']).
         path (str): The source directory containing the files to be copied.
+        overwrite (bool, optional): If True, overwrite existing files. If False, skip existing files. Defaults to False.
     """
-    destination = os.path.join(path, 'paraview')
-    os.makedirs(destination, exist_ok=True)
+    destination_dir = os.path.join(path, 'paraview')
+    os.makedirs(destination_dir, exist_ok=True)
 
     for j in str_list:
         final_list = glob.glob(os.path.join(path, j))
         for source in final_list:
-            if not os.path.exists(destination):
-                shutil.copy(source, destination)
+            filename = os.path.basename(source)
+            destination_file = os.path.join(destination_dir, filename)
+            
+            if os.path.exists(destination_file) and not overwrite:
+                print(f"The file {destination_file} already exists. Skipping.")
             else:
-                print(f"The file {destination} already exists.")
+                shutil.copy(source, destination_file)
+                if os.path.exists(destination_file) and not overwrite:
+                    print(f"Copied {source} to {destination_file}")
+                elif overwrite:
+                    print(f"Overwritten {destination_file} with {source}")
 
 
 def run_with_timeout(func, timeout, *args, **kwargs):
