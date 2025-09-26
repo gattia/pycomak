@@ -12,63 +12,10 @@ from pycomak.defaults import slack_length_dict as SLACK_LENGTH
 from pycomak.defaults import muscle_length_dict as MUSCLE_LENGTH
 from pycomak import COMAKBASE
 
-def update_slack_lengths(model, new_model_file=None, slack_length_dict=SLACK_LENGTH, muscle_length_dict=MUSCLE_LENGTH):
-    """
-    Updates ligament slack lengths and muscle optimal fiber lengths and tendon slack lengths
-    based on the current model state and provided dictionaries.
+from nsosim.osim_utils import update_slack_lengths, get_osim_muscle_ligament_reference_lengths
 
-    Args:
-        model (osim.Model or str): The OpenSim model object or path to the model file.
-        new_model_file (str, optional): Path to save the updated model. If None, the model is not saved.
-            Defaults to None.
-        slack_length_dict (dict, optional): Dictionary mapping ligament names to their reference strains.
-            Defaults to SLACK_LENGTH from pycomak.defaults.
-        muscle_length_dict (dict, optional): Dictionary mapping muscle names to their reference lengths.
-            Defaults to MUSCLE_LENGTH from pycomak.defaults.
 
-    Returns:
-        osim.Model: The updated OpenSim model object.
-    """
-    if isinstance(model, str):
-        model = osim.Model(model)
-    
-    forces_upd = model.upd_ForceSet()
-
-    state = model.initSystem()
-    
-    # Modifying ligaments & muscles
-    for i in range(forces_upd.getSize()):
-        force_ = forces_upd.get(i)
-            
-        if force_.getConcreteClassName() == 'Millard2012EquilibriumMuscle':
-            # get the muscle
-            muscle = osim.Millard2012EquilibriumMuscle.safeDownCast(force_)
-            # calculate the scale factor
-            scale_factor = muscle.getLength(state) / muscle_length_dict[muscle.getName()]
-            # update the optimal fiber length
-            optimal_ = muscle.getOptimalFiberLength()
-            optimal_ *= scale_factor
-            muscle.setOptimalFiberLength(optimal_)
-            
-            # update the tendon slack length
-            slack_ = muscle.getTendonSlackLength()
-            slack_ *= scale_factor
-            muscle.setTendonSlackLength(slack_)
-        elif force_.getConcreteClassName() == 'Blankevoort1991Ligament':
-            ligament = osim.Blankevoort1991Ligament.safeDownCast(force_)
-            ligament.setSlackLengthFromReferenceStrain(slack_length_dict[ligament.getName()], state)
-    
-    # Add logic to also update muscle parameters? Slack length, and optimal fiber length?
-
-    print('Updated Ligament & Tendon Slack Lengths and Muscle Optimal Fiber Lengths')
-
-    if new_model_file is not None:
-        model.printToXML(new_model_file)
-        print('Saved Updated Model:', new_model_file)
-
-    return model
-
-def modifyCoordinates(model_update, ik_result_dir, newmodel, slack_length_dict=SLACK_LENGTH, muscle_length_dict=MUSCLE_LENGTH): 
+def modifyCoordinates(model_update, ik_result_dir, force_length_dict): 
     """
     Modifies the default coordinate values of a model based on the results of a
     secondary constraint settling simulation and updates slack lengths.
@@ -126,7 +73,8 @@ def modifyCoordinates(model_update, ik_result_dir, newmodel, slack_length_dict=S
         else:
             joint_upd.get_coordinates(coordinate_index).setDefaultValue(coord_values[i])
 
-    update_slack_lengths(model_update, new_model_file=newmodel, slack_length_dict=slack_length_dict, muscle_length_dict=muscle_length_dict)
+    update_slack_lengths(model_update, force_length_dict=force_length_dict)
+
     
     
 class COMAKInverseKinematics(COMAKBASE):
@@ -167,8 +115,8 @@ class COMAKInverseKinematics(COMAKBASE):
         primary_coordinates=PRIMARY_COORDINATES,
         secondary_coordinates=SECONDARY_COORDINATES,
         log_level="Trace",
-        slack_length_dict=SLACK_LENGTH,
-        muscle_length_dict=MUSCLE_LENGTH
+        # slack_length_dict=SLACK_LENGTH,
+        # muscle_length_dict=MUSCLE_LENGTH
     ):
         """
         Initializes the COMAKInverseKinematics class.
@@ -270,10 +218,15 @@ class COMAKInverseKinematics(COMAKBASE):
             self.settle_and_sweep_sim_filename
         )
         
-        self.slack_length_dict = slack_length_dict
-        self.muscle_length_dict = muscle_length_dict
+        # self.slack_length_dict = slack_length_dict
+        # self.muscle_length_dict = muscle_length_dict
         
         self.setup_generic_comakik_settings()
+        
+        # load base model, get state, and get reference force info
+        self.base_model = osim.Model(self.base_model_path)
+        self.base_state = self.base_model.initSystem()
+        self.ref_force_info = get_osim_muscle_ligament_reference_lengths(self.base_model, self.base_state)
         
         # aggregate all the settings in a dictionary and save it
         # as a json file in the inputs directory
@@ -301,8 +254,8 @@ class COMAKInverseKinematics(COMAKBASE):
             "primary_coordinates": self.primary_coordinates,
             "secondary_coordinates": self.secondary_coordinates,
             "log_level": log_level,
-            "slack_length_dict": self.slack_length_dict,
-            "muscle_length_dict": self.muscle_length_dict
+            # "slack_length_dict": self.slack_length_dict,
+            # "muscle_length_dict": self.muscle_length_dict
         }
         
         with open(os.path.join(self.inputs_dir, 'comak_inverse_kinematics_settings.json'), 'w') as f:
@@ -349,6 +302,43 @@ class COMAKInverseKinematics(COMAKBASE):
         self.comak_ik.set_IKTaskSet(ik_task_set)
         self.comak_ik.printToXML(self.save_xml_path)
     
+    def update_ligament_reference_strain(self, ligament_name: str, new_reference_strain: float):
+        """
+        Update the reference strain for a specific ligament in ref_force_info.
+        
+        Args:
+            ligament_name (str): Name of the ligament to update
+            new_reference_strain (float): New reference strain value
+            
+        Raises:
+            KeyError: If ligament_name is not found in ref_force_info
+            ValueError: If the specified force is not a ligament
+        """
+        if ligament_name not in self.ref_force_info:
+            available_ligaments = [name for name, info in self.ref_force_info.items() 
+                                 if info.get('class') == 'Blankevoort1991Ligament']
+            raise KeyError(f"Ligament '{ligament_name}' not found in ref_force_info. "
+                          f"Available ligaments: {available_ligaments}")
+        
+        if self.ref_force_info[ligament_name]['class'] != 'Blankevoort1991Ligament':
+            raise ValueError(f"'{ligament_name}' is not a ligament (class: {self.ref_force_info[ligament_name]['class']})")
+        
+        print(f"Updating {ligament_name} reference strain: "
+              f"{self.ref_force_info[ligament_name]['reference_strain']} -> {new_reference_strain}")
+        
+        self.ref_force_info[ligament_name]['reference_strain'] = new_reference_strain
+    
+    def update_multiple_ligament_reference_strains(self, strain_updates: dict):
+        """
+        Update reference strains for multiple ligaments at once.
+        
+        Args:
+            strain_updates (dict): Dictionary mapping ligament names to new reference strain values
+                                 Example: {'MCLd1': 0.05, 'ACLpl1': 0.02}
+        """
+        for ligament_name, new_strain in strain_updates.items():
+            self.update_ligament_reference_strain(ligament_name, new_strain)
+    
     def perform_settle_sim(self):
         """
         Performs the settling simulation part of the COMAK IK process.
@@ -374,19 +364,17 @@ class COMAKInverseKinematics(COMAKBASE):
         
         for count in range(self.settle_sim_reps - 1):
             print(f'Starting Settle Sim {count+1}...')
+            
             if count == 0:
-                print('First settle sim step - so, initializing slack lengths...')
-                # get file to load
-                # model_file =   # THIS ISNT CURRENTLY USED
-                # create new model file - to save updated slack lengths
-                
-
+                print('First settle sim step - so, initializing slack lengths...')                
+            
                 update_slack_lengths(
-                    model=self.base_model_path, # load in the original model once
-                    new_model_file=self.settle_sim_intermed_model_filepath,
-                    slack_length_dict=self.slack_length_dict,
-                    muscle_length_dict=self.muscle_length_dict
+                    model=self.base_model, # load in the original model once
+                    force_length_dict=self.ref_force_info,
                 )
+                
+                # save the updated model 
+                self.base_model.printToXML(self.settle_sim_intermed_model_filepath)
                 
                 # copy geometry files to the new model folder
                 # find geometry folder in the original model folder
@@ -399,20 +387,31 @@ class COMAKInverseKinematics(COMAKBASE):
                 print('Finished Initializing Slack Lengths')
                 print('\tUpdated Model:', self.settle_sim_intermed_model_filepath)
 
-                # update model file path so all new steps use the updated model
-                # self.model_path = self.settle_sim_intermed_model_filepath
-
+            # get lig/muscle parameters for scaling slacks.
+            model_update_1 = osim.Model(self.settle_sim_intermed_model_filepath)
+            state_update_1 = model_update_1.initSystem()
+            ref_force_info_update_1 = get_osim_muscle_ligament_reference_lengths(model_update_1, state_update_1)
+            
             # Run COMAK IK
             self.comak_ik.set_model_file(self.settle_sim_intermed_model_filepath)
             print('Running COMAKInverseKinematicsTool - Settle Sim Only...')
             # TODO: Update to use: performIKSecondaryConstraintSimulation() instead of run()
             self.comak_ik.run()
 
-            # Load the model 
-            model_update_1 = osim.Model(self.settle_sim_intermed_model_filepath)
+            # Load the model
+            # TODO: Can we remove this load? Is this model identical ? Is there any model saving occuring in IK? I assume not? 
+            # commening this out for now.... 
+            # model_update_1 = osim.Model(self.settle_sim_intermed_model_filepath)
 
             # Pose the model in the settle sim position, then update the tendon slack lengths
-            modifyCoordinates(model_update_1, self.ik_result_dir, self.settle_sim_intermed_model_filepath, slack_length_dict=self.slack_length_dict, muscle_length_dict=self.muscle_length_dict)
+            modifyCoordinates(model_update_1, self.ik_result_dir, ref_force_info_update_1)
+            
+            model_update_1.printToXML(self.settle_sim_intermed_model_filepath)
+            
+            # TODO: I think the osim.Model and model_update_1.printToXML() are redundant here.
+            # we are writing the model to disk, then reading it back in... we should just be able
+            # to get rid of the read/write and pass the same model between all steps.
+            # THOUGHT! The comak_ik reads the model from disk... so thats part of whats going on. 
 
     def perform_sweep_sim(self):
         """
@@ -443,10 +442,15 @@ class COMAKInverseKinematics(COMAKBASE):
         print('Running COMAKInverseKinematicsTool - Final Settle Sim & Sweep Sim...')
         # TODO: Update to use: performIKSecondaryConstraintSimulation() instead of run()
         self.comak_ik.run()
-        
+
         model_update_1 = osim.Model(self.settle_sim_intermed_model_filepath)
+        state_update_1 = model_update_1.initSystem()
+        ref_force_info_update_1 = get_osim_muscle_ligament_reference_lengths(model_update_1, state_update_1)
         
-        modifyCoordinates(model_update_1, self.ik_result_dir, self.final_model_path, slack_length_dict=self.slack_length_dict, muscle_length_dict=self.muscle_length_dict)
+        modifyCoordinates(model_update_1, self.ik_result_dir, ref_force_info_update_1)
+        
+        # saving the final model
+        model_update_1.printToXML(self.final_model_path)
     
     def perform_inverse_kinematics(self):
         """

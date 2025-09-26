@@ -2,43 +2,18 @@ import copy
 import numpy as np
 import os
 import xml.etree.ElementTree as ET
-
+import opensim as osim
+import json
 # 'LOC_SDF_CACHE' to environment variables
 os.environ['LOC_SDF_CACHE'] = ''
 
 from pycomak.forsim import COMAKforsim
 from pycomak import COMAKInverseKinematics
 from pycomak.utils import run_with_timeout
-from nsosim.comak_osim_update import update_patella_location
+# from nsosim.comak_osim_update import update_patella_location
+from nsosim.osim_utils import update_joint_default_values, get_osim_muscle_ligament_reference_lengths
 
 
-def get_patella_location(path_model):
-    """
-    Retrieves the default patellofemoral (pf_r) joint translation values from an OpenSim model file.
-
-    Parses the XML of the .osim file to find the CustomJoint named 'pf_r' and extracts
-    the default_value for its translational coordinates (pf_tx_r, pf_ty_r, pf_tz_r).
-
-    Args:
-        path_model (str): Path to the OpenSim model file (.osim).
-
-    Returns:
-        numpy.ndarray: A 1D array containing the [x, y, z] default translations of the
-            patellofemoral joint. Returns an empty array or raises an error if not found.
-    """
-    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)) # keep comments
-    tree = ET.parse(path_model, parser)
-    root = tree.getroot()[0]
-        
-    jointset = root.find('JointSet')[0]
-    pf_r = jointset.findall("./CustomJoint[@name='pf_r']")[0]
-    pf_r_tx = pf_r.findall("./coordinates/Coordinate[@name='pf_tx_r']/default_value")[0].text 
-    pf_r_ty = pf_r.findall("./coordinates/Coordinate[@name='pf_ty_r']/default_value")[0].text 
-    pf_r_tz = pf_r.findall("./coordinates/Coordinate[@name='pf_tz_r']/default_value")[0].text 
-
-    pf_r_position = np.array([float(pf_r_tx), float(pf_r_ty), float(pf_r_tz)])
-    
-    return pf_r_position
 
 def update_patella_location_(path_model, path_save_model, update):
     """
@@ -56,19 +31,23 @@ def update_patella_location_(path_model, path_save_model, update):
         update (numpy.ndarray): A 1D array containing the [dx, dy, dz] changes to be
             applied to the patella's default translational coordinates.
     """
-    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)) # keep comments
-    tree = ET.parse(path_model, parser)
-    root = tree.getroot()[0]
+
+    #load the model 
+    model = osim.Model(path_model)
     
-    # get current patella location
+    # create patella update dict
+    dict_joint_default_values_update = {
+        "pf_r": {
+            3: update[0],
+            4: update[1],
+            5: update[2]
+        }
+    }
+    # update the model
     
-    patella_location = get_patella_location(path_model)
-
-    new_patella_location = patella_location + update
-
-    update_patella_location(root, new_patella_location)
-
-    tree.write(path_save_model, encoding='utf8',method='xml')
+    update_joint_default_values(model, dict_joint_default_values_update, incremental=True)
+    # save the model
+    model.printToXML(path_save_model)
     
 class KneeOptimizer:
     """
@@ -99,7 +78,20 @@ class KneeOptimizer:
         _n_updates (int): Current number of patella position updates made.
         _list_eval_results (list): Stores evaluation results from each iteration.
     """
-    def __init__(self, path_model_to_update, results_dir, markerset_file, dict_kinematics, dict_muscles, dict_criteria, settle_sim_reps=2, patella_position_update=np.asarray([0, -0.001, 0]), max_duration=45, max_updates=10):
+    def __init__(
+            self, 
+            path_model_to_update, 
+            results_dir, 
+            markerset_file, 
+            dict_kinematics, 
+            dict_muscles, 
+            dict_criteria, 
+            settle_sim_reps=2, 
+            patella_position_update=np.asarray([0, -0.001, 0]), 
+            max_duration=45, 
+            max_updates=10,
+            dict_reference_strain_update=None,
+        ):
         """
         Initializes the KneeOptimizer.
 
@@ -121,6 +113,8 @@ class KneeOptimizer:
                 Defaults to 45.
             max_updates (int, optional): Maximum number of times the patella position will be updated.
                 Defaults to 10.
+            dict_reference_strain_update (dict, optional): Dictionary of reference strain updates for the COMAK IK settle simulation.
+                Defaults to None.
         """
         self.path_model_to_update = path_model_to_update
         self.results_dir = results_dir
@@ -135,6 +129,7 @@ class KneeOptimizer:
         self._n_updates = 0
         self._list_eval_results = []
         self.settle_sim_intermed_filename = "patella_optimize_settle_sim_intermediate.osim"
+        self.dict_reference_strain_update = dict_reference_strain_update
 
     def optimize_patella_location(self):
         """
@@ -172,6 +167,9 @@ class KneeOptimizer:
             comak_ik.settle_sim_intermed_filename = self.settle_sim_intermed_filename
             comak_ik.settle_sim_intermed_model_filepath = os.path.join(comak_ik.ik_result_dir, self.settle_sim_intermed_filename)
             comak_ik.setup_generic_comakik_settings()
+            
+            if self.dict_reference_strain_update is not None:
+                comak_ik.update_multiple_ligament_reference_strains(self.dict_reference_strain_update)
             
             try:
                 # Set timer for settle sim to 5 minutes
@@ -219,6 +217,11 @@ class KneeOptimizer:
         
         # patella_opt_max_updates
         # settle_sim_timeout
+        
+        # in results_dir, save the total update achieved, by summing all the updates.
+        total_update = np.asarray(self.patella_position_update) * self._n_updates
+        with open(os.path.join(self.results_dir, 'total_patella_update.json'), 'w') as f:
+            json.dump(total_update.tolist(), f)
         
         if not success:
             if isinstance(self._list_eval_results[-1], str):

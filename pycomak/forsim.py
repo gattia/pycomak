@@ -90,7 +90,8 @@ SECONDARY_COORD_CRITERIA = {
     
 def create_save_sto(
     dict_data,
-    path_save
+    path_save,
+    convert_to_radians=False,
 ):
     """
     Creates an OpenSim TimeSeriesTable from a dictionary of data and saves it as a .sto file.
@@ -100,6 +101,8 @@ def create_save_sto(
             1D numpy arrays of data. Must include a 'time' key with the time vector.
         path_save (str): The full path (including filename) to save the .sto file.
             Must end with '.sto'.
+        convert_to_radians (bool, optional): Whether to convert angular coordinates from degrees to radians.
+            Defaults to False.
 
     Raises:
         AssertionError: If 'time' key is missing in `dict_data` or if `path_save`
@@ -118,7 +121,12 @@ def create_save_sto(
         if key == 'time':
             continue
         else:
+            # if convert_to_radians:
+            #     data[:, idx] = np.deg2rad(array)
+            # else:
+            
             data[:, idx] = array
+                
             labels.append(key)
             idx += 1
     
@@ -503,7 +511,8 @@ class COMAKforsim:
         
         create_save_sto(
             dict_kinematics,
-            os.path.join(folder_save_results, 'kinematics.sto')
+            os.path.join(folder_save_results, 'kinematics.sto'),
+            convert_to_radians=True
         )
         
         create_save_sto(
