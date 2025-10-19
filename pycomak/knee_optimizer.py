@@ -130,6 +130,7 @@ class KneeOptimizer:
         self._list_eval_results = []
         self.settle_sim_intermed_filename = "patella_optimize_settle_sim_intermediate.osim"
         self.dict_reference_strain_update = dict_reference_strain_update
+        self._intermediate_model_path = None
 
     def optimize_patella_location(self):
         """
@@ -166,6 +167,8 @@ class KneeOptimizer:
             
             comak_ik.settle_sim_intermed_filename = self.settle_sim_intermed_filename
             comak_ik.settle_sim_intermed_model_filepath = os.path.join(comak_ik.ik_result_dir, self.settle_sim_intermed_filename)
+            # Store the intermediate model path for external access
+            self._intermediate_model_path = comak_ik.settle_sim_intermed_model_filepath
             comak_ik.setup_generic_comakik_settings()
             
             if self.dict_reference_strain_update is not None:
@@ -252,3 +255,22 @@ class KneeOptimizer:
             int: The total count of updates made to the patella's default position.
         """
         return self._n_updates
+
+    @property
+    def intermediate_model_path(self):
+        """
+        Returns the path to the intermediate model created during the last settle simulation.
+        
+        This model includes:
+        - Updated ligament slack lengths from the settle simulation
+        - Applied reference strain updates (if dict_reference_strain_update was provided)
+        - The optimized patella location
+        
+        Use this model for subsequent COMAK operations to avoid re-running settle simulations
+        and to preserve the strain updates.
+
+        Returns:
+            str or None: Path to the intermediate .osim model file, or None if optimize_patella_location
+                has not been called yet.
+        """
+        return self._intermediate_model_path
