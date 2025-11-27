@@ -7,6 +7,9 @@ from .comak_id import COMAKInverseDynamics
 from .comak_ik import COMAKInverseKinematics
 from .jntmech import JointMechanics
 
-from . import jam_analysis 
+from . import jam_analysis
+from .jam_analysis import JamAnalysis
+from .group_analysis import GroupJamAnalysis, extract_opensim_constraint_functions, extract_opensim_table
+from . import plotting_utils
 
 __version__ = '0.0.1'

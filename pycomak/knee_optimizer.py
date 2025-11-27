@@ -63,6 +63,15 @@ class KneeOptimizer:
 
     The optimization stops if criteria are met, a maximum number of updates is reached,
     or simulations consistently time out.
+    
+    Important Notes on Settle Simulations:
+    - settle_sim_reps=N performs N-1 actual settle iterations (see COMAKInverseKinematics.perform_settle_sim)
+    - The intermediate_model_path contains: (1) optimized patella position as default coordinates,
+      (2) ALL joint defaults set to their settled equilibrium positions, (3) ligament slack lengths
+      updated to match the settled configuration, and (4) applied reference strain updates
+    - If using this optimizer before running full COMAK IK, note that settle sims will be performed
+      TWICE (once here, once in main IK). To match the total settle count that main IK will perform,
+      set settle_sim_reps = main_ik_settle_reps + 1 (to account for the extra settle in sweep_sim).
 
     Attributes:
         path_model_to_update (str): Path to the OpenSim model file to be optimized.
@@ -74,7 +83,7 @@ class KneeOptimizer:
         patella_position_update (numpy.ndarray): Update vector applied to patella position at each step.
         max_duration (int): Max duration for Forsim simulation (seconds).
         max_updates (int): Max number of patella position updates.
-        settle_sim_reps (int): Number of repetitions for COMAK IK settle sim.
+        settle_sim_reps (int): Number of settle sim repetitions (actual iterations = settle_sim_reps - 1).
         _n_updates (int): Current number of patella position updates made.
         _list_eval_results (list): Stores evaluation results from each iteration.
     """
@@ -106,7 +115,7 @@ class KneeOptimizer:
             dict_criteria (dict): Dictionary of criteria to evaluate the Forsim simulation results
                 (see `forsim.jam_evaluation` for format).
             settle_sim_reps (int, optional): Number of repetitions for the COMAK IK settle simulation.
-                Defaults to 2.
+                Note: actual settle iterations = settle_sim_reps - 1. Defaults to 2.
             patella_position_update (numpy.ndarray, optional): The [dx, dy, dz] vector to update the
                 patella's default position by at each iteration. Defaults to [0, -0.001, 0] (1mm inferiorly).
             max_duration (int, optional): Maximum duration in seconds for each Forsim simulation run.
@@ -154,7 +163,9 @@ class KneeOptimizer:
         """
         success = False
         while ((not success) and (self._n_updates < self.max_updates)):
-            # Update ligament slack lengths
+            # Perform settle simulation to equilibrate the model with current patella position.
+            # This does (settle_sim_reps - 1) actual settle iterations and saves the equilibrated
+            # model with updated slack lengths to intermediate_model_path.
             
             comak_ik = COMAKInverseKinematics(
                 base_model_path=self.path_model_to_update,
@@ -176,7 +187,7 @@ class KneeOptimizer:
             
             try:
                 # Set timer for settle sim to 5 minutes
-                run_with_timeout(comak_ik.perform_settle_sim, 60*5)
+                run_with_timeout(comak_ik.perform_settle_sim, 60*10)
             except TimeoutError:
                 update_patella_location_(self.path_model_to_update, self.path_model_to_update, self.patella_position_update)
                 self._n_updates += 1
@@ -261,13 +272,16 @@ class KneeOptimizer:
         """
         Returns the path to the intermediate model created during the last settle simulation.
         
-        This model includes:
-        - Updated ligament slack lengths from the settle simulation
+        This model is a fully equilibrated model at rest, containing:
+        - The optimized patella location (as default coordinate values)
+        - ALL joint default coordinates set to their settled equilibrium positions
+        - Updated ligament slack lengths matching the settled configuration
         - Applied reference strain updates (if dict_reference_strain_update was provided)
-        - The optimized patella location
         
-        Use this model for subsequent COMAK operations to avoid re-running settle simulations
-        and to preserve the strain updates.
+        IMPORTANT: This model already has equilibrated slack lengths. If you run additional
+        settle simulations with this model (e.g., in COMAKInverseKinematics), you will be
+        re-settling an already-settled model. This is mostly redundant but may make small
+        adjustments if the starting pose differs (e.g., static forsim pose vs. IK markers).
 
         Returns:
             str or None: Path to the intermediate .osim model file, or None if optimize_patella_location

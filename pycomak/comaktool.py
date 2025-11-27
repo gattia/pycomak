@@ -75,8 +75,8 @@ class COMAK(COMAKBASE):
         stop_time,
         time_step=0.01,
         low_pass_cutoff=6,
-        settle_threshold=1e-3,
-        settle_accuracy=1e-2,
+        settle_threshold=1e-3,  #1e-4
+        settle_accuracy=1e-2,  #1e-3
         settle_internal_step_limit=10_000,
         max_iterations=25,
         udot_tolerance=1,

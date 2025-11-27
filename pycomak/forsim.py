@@ -18,20 +18,38 @@ UNCONSTRAINED_COORDINATES = [
     '/jointset/pf_r/pf_tilt_r',
     '/jointset/pf_r/pf_tx_r',
     '/jointset/pf_r/pf_ty_r',
-    '/jointset/pf_r/pf_tz_r'
+    '/jointset/pf_r/pf_tz_r',
+    '/jointset/meniscus_medial_r/meniscus_medial_flex_r',
+    '/jointset/meniscus_medial_r/meniscus_medial_rot_r',
+    '/jointset/meniscus_medial_r/meniscus_medial_add_r',
+    '/jointset/meniscus_medial_r/meniscus_medial_tx_r',
+    '/jointset/meniscus_medial_r/meniscus_medial_ty_r',
+    '/jointset/meniscus_medial_r/meniscus_medial_tz_r',
+    '/jointset/meniscus_lateral_r/meniscus_lateral_flex_r',
+    '/jointset/meniscus_lateral_r/meniscus_lateral_rot_r',
+    '/jointset/meniscus_lateral_r/meniscus_lateral_add_r',
+    '/jointset/meniscus_lateral_r/meniscus_lateral_tx_r',
+    '/jointset/meniscus_lateral_r/meniscus_lateral_ty_r',
+    '/jointset/meniscus_lateral_r/meniscus_lateral_tz_r',
 ]
 
 ATTACHED_GEOMETRY_BODIES = [
     '/bodyset/femur_distal_r',
     '/bodyset/tibia_proximal_r',
-    '/bodyset/patella_r'
+    '/bodyset/patella_r',
+    '/bodyset/meniscus_medial_r',
+    '/bodyset/meniscus_lateral_r',
 ]
 
 SECONDARY_COORDINATES = [
     'knee_flex_r', 'knee_add_r', 'knee_rot_r',
     'knee_tx_r', 'knee_ty_r', 'knee_tz_r',
     'pf_flex_r', 'pf_rot_r', 'pf_tilt_r',
-    'pf_tx_r','pf_ty_r','pf_tz_r'
+    'pf_tx_r','pf_ty_r','pf_tz_r',
+    'meniscus_medial_flex_r', 'meniscus_medial_rot_r', 'meniscus_medial_add_r',
+    'meniscus_medial_tx_r', 'meniscus_medial_ty_r', 'meniscus_medial_tz_r',
+    'meniscus_lateral_flex_r', 'meniscus_lateral_rot_r', 'meniscus_lateral_add_r',
+    'meniscus_lateral_tx_r', 'meniscus_lateral_ty_r', 'meniscus_lateral_tz_r',
 ]
 
 LIGAMENTS = [

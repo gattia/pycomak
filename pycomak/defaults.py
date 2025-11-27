@@ -47,17 +47,61 @@ primary_coordinates = {
 }
 
 secondary_coordinates = {
-    "knee_add_r": {"max_change": 0.01, "coordinate": "/jointset/knee_r/knee_add_r"},
-    "knee_rot_r": {"max_change": 0.01, "coordinate": "/jointset/knee_r/knee_rot_r"},
-    "knee_tx_r": {"max_change": 0.05, "coordinate": "/jointset/knee_r/knee_tx_r"},
-    "knee_ty_r": {"max_change": 0.05, "coordinate": "/jointset/knee_r/knee_ty_r"},
-    "knee_tz_r": {"max_change": 0.05, "coordinate": "/jointset/knee_r/knee_tz_r"},
-    "pf_flex_r": {"max_change": 0.1, "coordinate": "/jointset/pf_r/pf_flex_r"},
-    "pf_rot_r": {"max_change": 0.01, "coordinate": "/jointset/pf_r/pf_rot_r"},
-    "pf_tilt_r": {"max_change": 0.01, "coordinate": "/jointset/pf_r/pf_tilt_r"},
-    "pf_tx_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_tx_r"},
-    "pf_ty_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_ty_r"},
-    "pf_tz_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_tz_r"}
+    # # Knee kinematics (rotations and translations)
+    # "knee_add_r": {"max_change": 0.01, "coordinate": "/jointset/knee_r/knee_add_r"},
+    # "knee_rot_r": {"max_change": 0.01, "coordinate": "/jointset/knee_r/knee_rot_r"},
+    # "knee_tx_r": {"max_change": 0.05, "coordinate": "/jointset/knee_r/knee_tx_r"},
+    # "knee_ty_r": {"max_change": 0.05, "coordinate": "/jointset/knee_r/knee_ty_r"},
+    # "knee_tz_r": {"max_change": 0.05, "coordinate": "/jointset/knee_r/knee_tz_r"},
+    # # Patella kinematics (rotations and translations)
+    # "pf_flex_r": {"max_change": 0.1, "coordinate": "/jointset/pf_r/pf_flex_r"},
+    # "pf_rot_r": {"max_change": 0.01, "coordinate": "/jointset/pf_r/pf_rot_r"},
+    # "pf_tilt_r": {"max_change": 0.01, "coordinate": "/jointset/pf_r/pf_tilt_r"},
+    # "pf_tx_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_tx_r"},
+    # "pf_ty_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_ty_r"},
+    # "pf_tz_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_tz_r"},
+    # # Medial meniscus kinematics (rotations and translations)
+    # "meniscus_medial_flex_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_flex_r"},
+    # "meniscus_medial_rot_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_rot_r"},
+    # "meniscus_medial_add_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_add_r"},
+    # "meniscus_medial_tx_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_tx_r"},
+    # "meniscus_medial_ty_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_ty_r"},
+    # "meniscus_medial_tz_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_tz_r"},
+    # # Lateral meniscus kinematics (rotations and translations)
+    # "meniscus_lateral_flex_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_flex_r"},
+    # "meniscus_lateral_rot_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_rot_r"},
+    # "meniscus_lateral_add_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_add_r"},
+    # "meniscus_lateral_tx_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_tx_r"},
+    # "meniscus_lateral_ty_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_ty_r"},
+    # "meniscus_lateral_tz_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_tz_r"},
+    # Knee kinematics (rotations and translations)
+    "knee_add_r": {"max_change": 0.005, "coordinate": "/jointset/knee_r/knee_add_r"},
+    "knee_rot_r": {"max_change": 0.005, "coordinate": "/jointset/knee_r/knee_rot_r"},
+    "knee_tx_r": {"max_change": 0.001, "coordinate": "/jointset/knee_r/knee_tx_r"},
+    "knee_ty_r": {"max_change": 0.001, "coordinate": "/jointset/knee_r/knee_ty_r"},
+    "knee_tz_r": {"max_change": 0.001, "coordinate": "/jointset/knee_r/knee_tz_r"},
+    # Patella kinematics (rotations and translations)
+    "pf_flex_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_flex_r"},
+    "pf_rot_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_rot_r"},
+    "pf_tilt_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_tilt_r"},
+    "pf_tx_r": {"max_change": 0.001, "coordinate": "/jointset/pf_r/pf_tx_r"},
+    "pf_ty_r": {"max_change": 0.001, "coordinate": "/jointset/pf_r/pf_ty_r"},
+    "pf_tz_r": {"max_change": 0.001, "coordinate": "/jointset/pf_r/pf_tz_r"},
+    # Medial meniscus kinematics (rotations and translations)
+    "meniscus_medial_flex_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_flex_r"},
+    "meniscus_medial_rot_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_rot_r"},
+    "meniscus_medial_add_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_add_r"},
+    "meniscus_medial_tx_r": {"max_change": 0.001, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_tx_r"},
+    "meniscus_medial_ty_r": {"max_change": 0.001, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_ty_r"},
+    "meniscus_medial_tz_r": {"max_change": 0.001, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_tz_r"},
+    # Lateral meniscus kinematics (rotations and translations)
+    "meniscus_lateral_flex_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_flex_r"},
+    "meniscus_lateral_rot_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_rot_r"},
+    "meniscus_lateral_add_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_add_r"},
+    "meniscus_lateral_tx_r": {"max_change": 0.001, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_tx_r"},
+    "meniscus_lateral_ty_r": {"max_change": 0.001, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_ty_r"},
+    "meniscus_lateral_tz_r": {"max_change": 0.001, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_tz_r"},
+    
 }
 
 # pt_strain_scale = 1

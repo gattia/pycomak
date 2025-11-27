@@ -15,6 +15,8 @@ from pycomak import COMAKBASE
 from nsosim.osim_utils import update_slack_lengths, get_osim_muscle_ligament_reference_lengths
 
 
+# Remove 
+
 def modifyCoordinates(model_update, ik_result_dir, force_length_dict): 
     """
     Modifies the default coordinate values of a model based on the results of a
@@ -23,16 +25,17 @@ def modifyCoordinates(model_update, ik_result_dir, force_length_dict):
     The function reads coordinate values from a 'secondary_constraint_settle_states.sto' file,
     adjusts the model's default coordinate values to be within their range if necessary,
     and then calls `update_slack_lengths` to update ligament and muscle properties.
+    
+    IMPORTANT: This creates a model at equilibrium. The default coordinate values are set
+    to the SETTLED positions (not the original defaults), and slack lengths are updated
+    to match this settled configuration. The resulting model is at rest in equilibrium.
 
     Args:
         model_update (osim.Model): The OpenSim model object to be modified.
         ik_result_dir (str): Directory containing the IK results, specifically the
             '_secondary_constraint_settle_states.sto' file.
-        newmodel (str): Path to save the modified model with updated slack lengths.
-        slack_length_dict (dict, optional): Dictionary for slack length updates. 
-            Defaults to SLACK_LENGTH from pycomak.defaults.
-        muscle_length_dict (dict, optional): Dictionary for muscle length updates. 
-            Defaults to MUSCLE_LENGTH from pycomak.defaults.
+        force_length_dict (dict): Dictionary containing reference force information for
+            updating slack lengths.
     """
     
     # Setting the State
@@ -88,6 +91,13 @@ class COMAKInverseKinematics(COMAKBASE):
     3. An inverse kinematics step to calculate joint angles based on marker data.
 
     It handles model updates, logging, and saving of settings and results.
+    
+    Important Notes on Settle Simulations:
+    - settle_sim_reps=N performs (N-1) settle iterations in perform_settle_sim()
+    - perform_sweep_sim() performs one additional settle before sweeping
+    - Total settle count = settle_sim_reps (N-1 in settle + 1 in sweep)
+    - Each settle iteration finds equilibrium, updates joint defaults to settled positions,
+      and updates ligament slack lengths to match the settled configuration
     """
     def __init__(
         self,
@@ -130,7 +140,8 @@ class COMAKInverseKinematics(COMAKBASE):
             start_pad (float, optional): Time padding at the start of the IK. Defaults to 0.0.
             stop_pad (float, optional): Time padding at the end of the IK. Defaults to 0.0.
             settle_sim_reps (int, optional): Number of repetitions for the settling simulation.
-                Defaults to 5.
+                Actual iterations = settle_sim_reps - 1 in perform_settle_sim(), plus 1 more
+                in perform_sweep_sim(), for a total of settle_sim_reps settle iterations. Defaults to 5.
             secondary_constraint_sim_sweep_time (float, optional): Duration of the sweep simulation for
                 secondary constraints. Defaults to 3.0.
             secondary_coupled_coordinate_stop_value (float, optional): Stop value for the coupled coordinate
@@ -348,6 +359,9 @@ class COMAKInverseKinematics(COMAKBASE):
         runs the COMAKInverseKinematicsTool in a settle-only mode for the specified
         number of repetitions, updating model coordinates after each run.
         Geometry files are also copied to the results directory.
+        
+        Note: Performs (settle_sim_reps - 1) actual settle iterations. The "-1" accounts
+        for an additional settle that occurs at the start of perform_sweep_sim().
         """
         self.comak_ik.set_perform_secondary_constraint_sim(True)
         self.comak_ik.set_secondary_constraint_sim_sweep_time(0)
@@ -362,6 +376,7 @@ class COMAKInverseKinematics(COMAKBASE):
             os.path.join(self.ik_result_dir, self.settle_sim_secondary_constraint_function_filename)
         )
         
+        # Loop (settle_sim_reps - 1) times because perform_sweep_sim() does one additional settle
         for count in range(self.settle_sim_reps - 1):
             print(f'Starting Settle Sim {count+1}...')
             
@@ -421,6 +436,9 @@ class COMAKInverseKinematics(COMAKBASE):
         the coupled coordinate through its range. It uses the model from the settle simulation
         and runs the COMAKInverseKinematicsTool in a sweep-only mode.
         After the sweep, model coordinates are updated based on the results.
+        
+        Note: This method performs one final settle simulation before sweeping (see line 451).
+        This is why perform_settle_sim() only does (settle_sim_reps - 1) iterations.
         """
         self.comak_ik.set_perform_inverse_kinematics(False)
         self.comak_ik.set_perform_secondary_constraint_sim(True)
@@ -439,6 +457,7 @@ class COMAKInverseKinematics(COMAKBASE):
         self.comak_ik.set_secondary_constraint_sim_sweep_time(self.secondary_constraint_sim_sweep_time)
         self.comak_ik.set_secondary_coupled_coordinate_start_value(0)
         self.comak_ik.set_secondary_coupled_coordinate_stop_value(self.secondary_coupled_coordinate_stop_value)
+        # This performs one final settle (the Nth settle if settle_sim_reps=N) before sweeping
         print('Running COMAKInverseKinematicsTool - Final Settle Sim & Sweep Sim...')
         # TODO: Update to use: performIKSecondaryConstraintSimulation() instead of run()
         self.comak_ik.run()
