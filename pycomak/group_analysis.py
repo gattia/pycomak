@@ -118,7 +118,14 @@ class GroupJamAnalysis:
         results_folder: Optional[str] = None,
         h5_file_path: Optional[str] = None,
         subject_folder_pattern: Optional[str] = None,
-        timepoint: Optional[str] = None
+        timepoint: Optional[str] = None,
+        filter_data: bool = True,
+        contact_types: Optional[List[str]] = None,
+        cartilages: Optional[List[str]] = None,
+        regions: Optional[List[int]] = None,
+        contact_outcomes: Optional[List[str]] = None,
+        muscle_outcomes: Optional[List[str]] = None,
+        ligament_outcomes: Optional[List[str]] = None
     ):
         """
         Add a subject to the analysis.
@@ -135,6 +142,16 @@ class GroupJamAnalysis:
                                    and {timepoint} as placeholders. 
                                    Default: '{subject_id}_{timepoint}_{side}'
             timepoint: Timepoint identifier (overrides class default). Use '' for no timepoint.
+            filter_data: If True, filter JAM data to reduce memory usage (default: True).
+                        This is critical for large datasets - without filtering, pickle files
+                        can be 100+ GB instead of ~500 MB.
+            contact_types: Contact types to keep (default: ['tf_contact'])
+            cartilages: Cartilage surfaces to keep (default: ['tibia_cartilage'])
+            regions: Region indices to keep (default: [4, 5] for medial/lateral tibia)
+            contact_outcomes: Contact outcomes to keep (default: regional pressures, area, force)
+            muscle_outcomes: Muscle outcomes to keep (default: ['actuation']).
+                           Set to None to keep all muscle outcomes.
+            ligament_outcomes: Ligament outcomes to keep (default: None = keep all).
             
         Returns:
             True if successful, False if simulation files not found
@@ -163,6 +180,14 @@ class GroupJamAnalysis:
             # Direct h5 file path (most flexible):
             add_subject('9003175', 'RIGHT', 'run1', 
                        h5_file_path='/path/to/my/file.h5')
+            
+            # Without filtering (WARNING: large memory usage):
+            add_subject('9003175', 'RIGHT', 'run1', filter_data=False)
+            
+            # Include patellofemoral contact data:
+            add_subject('9003175', 'RIGHT', 'run1',
+                       contact_types=['tf_contact', 'pf_contact'],
+                       cartilages=['tibia_cartilage', 'patella_cartilage'])
         """
         # Use provided timepoint or fall back to class default
         if timepoint is None:
@@ -236,9 +261,130 @@ class GroupJamAnalysis:
         if run_jam:
             jam = JamAnalysis()
             jam.jam_analysis([h5_file])
+            
+            # Apply filtering to reduce memory usage
+            if filter_data:
+                self._filter_jam_data(
+                    jam,
+                    contact_types=contact_types,
+                    cartilages=cartilages,
+                    regions=regions,
+                    contact_outcomes=contact_outcomes,
+                    muscle_outcomes=muscle_outcomes,
+                    ligament_outcomes=ligament_outcomes
+                )
+            
             self.groups[group]['jam_list'].append(jam)
         
         return True
+    
+    def _filter_jam_data(
+        self,
+        jam: 'JamAnalysis',
+        contact_types: Optional[List[str]] = None,
+        cartilages: Optional[List[str]] = None,
+        regions: Optional[List[int]] = None,
+        contact_outcomes: Optional[List[str]] = None,
+        muscle_outcomes: Optional[List[str]] = None,
+        ligament_outcomes: Optional[List[str]] = None
+    ):
+        """
+        Filter JAM data to reduce memory usage.
+        
+        This removes unused data from the JAM object, keeping only what's needed
+        for typical analyses (contact mechanics, muscle forces, kinematics).
+        Without filtering, pickle files can be 100+ GB. With filtering, they're ~500 MB.
+        
+        Default settings match the OARSI analysis workflow:
+        - Contact: tf_contact, tibia_cartilage, regions 4 & 5, pressure/area/force outcomes
+        - Muscles: only 'actuation' outcome
+        - Ligaments: keep all (total_force is primary outcome)
+        - Coordinates: keep all (kinematics data is small)
+        
+        Args:
+            jam: JamAnalysis object to filter
+            contact_types: Contact types to keep (default: ['tf_contact'])
+            cartilages: Cartilage surfaces to keep (default: ['tibia_cartilage'])
+            regions: Region indices to keep (default: [4, 5] for medial/lateral tibia)
+            contact_outcomes: Contact outcomes to keep 
+                (default: regional_max_pressure, regional_mean_pressure, 
+                 regional_contact_area, regional_contact_force)
+            muscle_outcomes: Muscle outcomes to keep (default: ['actuation'])
+                           Set to None to keep all muscle outcomes.
+            ligament_outcomes: Ligament outcomes to keep (default: None = keep all)
+        """
+        # Set defaults matching previous OARSI analysis
+        contact_types = contact_types if contact_types is not None else ['tf_contact']
+        cartilages = cartilages if cartilages is not None else ['tibia_cartilage']
+        regions = regions if regions is not None else [4, 5]
+        contact_outcomes = contact_outcomes if contact_outcomes is not None else [
+            'regional_max_pressure', 
+            'regional_mean_pressure', 
+            'regional_contact_area',
+            'regional_contact_force'
+        ]
+        # Default muscle_outcomes to ['actuation'] - but allow None to skip filtering
+        if muscle_outcomes is None:
+            muscle_outcomes = ['actuation']
+        # ligament_outcomes = None means keep all ligament data (no filtering)
+        
+        # Filter Smith2018ArticularContactForce (the big memory hog)
+        if 'Smith2018ArticularContactForce' in jam.forceset:
+            original_contact = jam.forceset['Smith2018ArticularContactForce']
+            filtered_contact = {}
+            
+            for contact_type in contact_types:
+                if contact_type not in original_contact:
+                    continue
+                filtered_contact[contact_type] = {}
+                
+                for cartilage in cartilages:
+                    if cartilage not in original_contact[contact_type]:
+                        continue
+                    src = original_contact[contact_type][cartilage]
+                    filtered_contact[contact_type][cartilage] = {}
+                    
+                    # Keep total_contact_force if present
+                    if 'total_contact_force' in src:
+                        filtered_contact[contact_type][cartilage]['total_contact_force'] = src['total_contact_force']
+                    
+                    # Keep only specified regions and outcomes
+                    for region in regions:
+                        if region in src:
+                            filtered_contact[contact_type][cartilage][region] = {}
+                            for outcome in contact_outcomes:
+                                if outcome in src[region]:
+                                    filtered_contact[contact_type][cartilage][region][outcome] = src[region][outcome]
+            
+            jam.forceset['Smith2018ArticularContactForce'] = filtered_contact
+        
+        # Filter Muscle data (keep only specified outcomes)
+        if muscle_outcomes and 'Muscle' in jam.forceset:
+            original_muscles = jam.forceset['Muscle']
+            filtered_muscles = {}
+            
+            for muscle_name, muscle_data in original_muscles.items():
+                filtered_muscles[muscle_name] = {}
+                for outcome in muscle_outcomes:
+                    if outcome in muscle_data:
+                        filtered_muscles[muscle_name][outcome] = muscle_data[outcome]
+            
+            jam.forceset['Muscle'] = filtered_muscles
+        
+        # Filter Ligament data (optional - by default keep all)
+        if ligament_outcomes and 'Blankevoort1991Ligament' in jam.forceset:
+            original_ligaments = jam.forceset['Blankevoort1991Ligament']
+            filtered_ligaments = {}
+            
+            for lig_name, lig_data in original_ligaments.items():
+                filtered_ligaments[lig_name] = {}
+                for outcome in ligament_outcomes:
+                    if outcome in lig_data:
+                        filtered_ligaments[lig_name][outcome] = lig_data[outcome]
+            
+            jam.forceset['Blankevoort1991Ligament'] = filtered_ligaments
+        
+        # Note: coordinateset is kept in full (kinematics data is relatively small)
     
     def add_subjects_from_list(
         self, 
