@@ -68,6 +68,56 @@ GROUP_COLORS = {
     'default': '#ff7f0e'  # orange
 }
 
+def assign_colors_to_groups(group_names: List[str], color_dict: Optional[Dict] = None) -> Dict[str, str]:
+    """
+    Assign colors to groups, using predefined colors where available and 
+    automatically assigning from color cycle for unknown groups.
+    
+    This is useful for custom plotting code to ensure each group gets a unique color.
+    
+    Args:
+        group_names: List of group names
+        color_dict: Optional dict of predefined group colors (defaults to GROUP_COLORS)
+        
+    Returns:
+        Dict mapping each group name to a color
+        
+    Example:
+        ```python
+        from pycomak.plotting_utils import assign_colors_to_groups
+        
+        data = group_analysis.get_ligament_data('ACL', return_individuals=False)
+        colors = assign_colors_to_groups(list(data.keys()))
+        
+        for group_name, group_data in data.items():
+            color = colors[group_name]
+            plt.plot(group_data['time'], group_data['mean'], color=color)
+        ```
+    """
+    if color_dict is None:
+        color_dict = GROUP_COLORS
+    
+    # Default matplotlib color cycle
+    default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    
+    assigned_colors = {}
+    color_idx = 0
+    
+    for group_name in group_names:
+        if group_name in color_dict:
+            # Use predefined color
+            assigned_colors[group_name] = color_dict[group_name]
+        else:
+            # Assign color from cycle
+            assigned_colors[group_name] = default_colors[color_idx % len(default_colors)]
+            color_idx += 1
+    
+    return assigned_colors
+
+
+# Internal alias for backward compatibility
+_assign_colors_to_groups = assign_colors_to_groups
+
 
 def plot_coordinate_comparison(
     group_data: Dict[str, Dict],
@@ -106,8 +156,13 @@ def plot_coordinate_comparison(
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     
+    # Assign colors to groups (automatically assigns different colors to unknown groups)
+    group_names = list(group_data.keys())
     if colors is None:
-        colors = GROUP_COLORS
+        colors = _assign_colors_to_groups(group_names)
+    else:
+        # Still apply auto-assignment for any groups not in provided colors
+        colors = _assign_colors_to_groups(group_names, colors)
     
     # Determine if this is a translation coordinate
     is_translation = any(trans in coordinate_name for trans in ['tx', 'ty', 'tz'])
@@ -120,7 +175,7 @@ def plot_coordinate_comparison(
     
     # Plot each group
     for group_name, data in group_data.items():
-        color = colors.get(group_name, GROUP_COLORS['default'])
+        color = colors[group_name]
         
         mean = data['mean'].copy()
         time = data['time']
@@ -194,8 +249,13 @@ def plot_coordinate_individuals(
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     
+    # Assign colors to groups (automatically assigns different colors to unknown groups)
+    group_names = list(group_data.keys())
     if colors is None:
-        colors = GROUP_COLORS
+        colors = _assign_colors_to_groups(group_names)
+    else:
+        # Still apply auto-assignment for any groups not in provided colors
+        colors = _assign_colors_to_groups(group_names, colors)
     
     # Determine if this is a translation coordinate
     is_translation = any(trans in coordinate_name for trans in ['tx', 'ty', 'tz'])
@@ -208,7 +268,7 @@ def plot_coordinate_individuals(
     
     # Plot each group
     for group_name, data in group_data.items():
-        color = colors.get(group_name, GROUP_COLORS['default'])
+        color = colors[group_name]
         time = np.linspace(0, 100, data.shape[1])
         
         # Convert units if needed (data is in meters, convert to mm if requested)
@@ -326,12 +386,17 @@ def plot_muscle_comparison(
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     
+    # Assign colors to groups (automatically assigns different colors to unknown groups)
+    group_names = list(group_data.keys())
     if colors is None:
-        colors = GROUP_COLORS
+        colors = _assign_colors_to_groups(group_names)
+    else:
+        # Still apply auto-assignment for any groups not in provided colors
+        colors = _assign_colors_to_groups(group_names, colors)
     
     # Plot each group
     for group_name, data in group_data.items():
-        color = colors.get(group_name, GROUP_COLORS['default'])
+        color = colors[group_name]
         
         mean = data['mean']
         time = data['time']
@@ -390,12 +455,17 @@ def plot_muscle_individuals(
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     
+    # Assign colors to groups (automatically assigns different colors to unknown groups)
+    group_names = list(group_data.keys())
     if colors is None:
-        colors = GROUP_COLORS
+        colors = _assign_colors_to_groups(group_names)
+    else:
+        # Still apply auto-assignment for any groups not in provided colors
+        colors = _assign_colors_to_groups(group_names, colors)
     
     # Plot each group
     for group_name, data in group_data.items():
-        color = colors.get(group_name, GROUP_COLORS['default'])
+        color = colors[group_name]
         time = np.linspace(0, 100, data.shape[1])
         
         for i in range(data.shape[0]):
@@ -524,12 +594,17 @@ def plot_ligament_comparison(
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     
+    # Assign colors to groups (automatically assigns different colors to unknown groups)
+    group_names = list(group_data.keys())
     if colors is None:
-        colors = GROUP_COLORS
+        colors = _assign_colors_to_groups(group_names)
+    else:
+        # Still apply auto-assignment for any groups not in provided colors
+        colors = _assign_colors_to_groups(group_names, colors)
     
     # Plot each group
     for group_name, data in group_data.items():
-        color = colors.get(group_name, GROUP_COLORS['default'])
+        color = colors[group_name]
         
         mean = data['mean']
         time = data['time']
@@ -590,12 +665,17 @@ def plot_ligament_individuals(
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     
+    # Assign colors to groups (automatically assigns different colors to unknown groups)
+    group_names = list(group_data.keys())
     if colors is None:
-        colors = GROUP_COLORS
+        colors = _assign_colors_to_groups(group_names)
+    else:
+        # Still apply auto-assignment for any groups not in provided colors
+        colors = _assign_colors_to_groups(group_names, colors)
     
     # Plot each group
     for group_name, data in group_data.items():
-        color = colors.get(group_name, GROUP_COLORS['default'])
+        color = colors[group_name]
         time = np.linspace(0, 100, data.shape[1])
         
         for i in range(data.shape[0]):
@@ -722,8 +802,13 @@ def plot_regional_contact(
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     
+    # Assign colors to groups (automatically assigns different colors to unknown groups)
+    group_names = list(group_data.keys())
     if colors is None:
-        colors = GROUP_COLORS
+        colors = _assign_colors_to_groups(group_names)
+    else:
+        # Still apply auto-assignment for any groups not in provided colors
+        colors = _assign_colors_to_groups(group_names, colors)
     
     # Determine y-label based on outcome type
     ylabel_map = {
@@ -736,7 +821,7 @@ def plot_regional_contact(
     
     # Plot each group
     for group_name, data in group_data.items():
-        color = colors.get(group_name, GROUP_COLORS['default'])
+        color = colors[group_name]
         
         mean = data['mean']
         time = data['time']
@@ -817,8 +902,13 @@ def plot_regional_contact_individuals(
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     
+    # Assign colors to groups (automatically assigns different colors to unknown groups)
+    group_names = list(group_data.keys())
     if colors is None:
-        colors = GROUP_COLORS
+        colors = _assign_colors_to_groups(group_names)
+    else:
+        # Still apply auto-assignment for any groups not in provided colors
+        colors = _assign_colors_to_groups(group_names, colors)
     
     # Determine y-label based on outcome type
     ylabel_map = {
@@ -831,7 +921,7 @@ def plot_regional_contact_individuals(
     
     # Plot each group
     for group_name, data in group_data.items():
-        color = colors.get(group_name, GROUP_COLORS['default'])
+        color = colors[group_name]
         time = np.linspace(0, 100, data.shape[1])
         
         # Convert units if needed (data is in SI units)
@@ -1071,8 +1161,13 @@ def plot_variable_scatter(
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     
+    # Assign colors to groups (automatically assigns different colors to unknown groups)
+    group_names = list(x_data.keys())
     if colors is None:
-        colors = GROUP_COLORS
+        colors = _assign_colors_to_groups(group_names)
+    else:
+        # Still apply auto-assignment for any groups not in provided colors
+        colors = _assign_colors_to_groups(group_names, colors)
     
     # Plot each group
     all_x = []
@@ -1084,7 +1179,7 @@ def plot_variable_scatter(
         
         x = x_data[group_name]
         y = y_data[group_name]
-        color = colors.get(group_name, GROUP_COLORS['default'])
+        color = colors[group_name]
         
         ax.scatter(x, y, label=group_name.capitalize(), color=color, 
                   s=80, alpha=0.7, edgecolors='black', linewidths=0.5)
