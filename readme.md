@@ -127,6 +127,39 @@ summary_df.to_csv('subjects_summary.csv')
 
 See `examples/group_jam_analysis_example.ipynb` for a comprehensive demonstration.
 
+### CLI Tools
+
+#### pycomak-cleanup
+
+Remove legacy VTP files from `joint-mechanics/` directories. Prior to v0.6, `JointMechanics` output ~30,000 VTP files per subject (~1 GB). The new defaults output only ~800 contact surface files (~100 MB). This tool cleans up legacy files from existing results.
+
+**Files deleted:** `_ligament_*.vtp`, `_muscle_*.vtp`, `_mesh_*.vtp`
+**Files kept:** `_contact_*.vtp`, `*.h5`, `*.sto`
+
+```bash
+# Dry run (default) - shows what would be deleted
+pycomak-cleanup --path /path/to/results
+
+# Actually delete files
+pycomak-cleanup --path /path/to/results --execute
+
+# With more parallel workers for faster processing
+pycomak-cleanup --path /path/to/results --execute --workers 16
+```
+
+Programmatic usage:
+
+```python
+from pycomak import cleanup_legacy_vtp_files
+
+# Dry run
+result = cleanup_legacy_vtp_files('/path/to/results')
+print(f"Would delete {result['files_deleted']} files, freeing {result['size_freed']} bytes")
+
+# Execute
+result = cleanup_legacy_vtp_files('/path/to/results', execute=True)
+```
+
 *(Note: For detailed API usage, specific function arguments, and file naming conventions, please refer to the docstrings within each Python module and example implementation scripts.)*
 
 ## License

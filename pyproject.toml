@@ -29,6 +29,8 @@ classifiers = [
 dependencies = []
 dynamic = ["version"]
 
+[project.scripts]
+pycomak-cleanup = "pycomak.cleanup:main"
 
 [project.urls]
 #Homepage = "https://github.com/gattia/NSM/"

@@ -84,6 +84,28 @@ The typical workflow follows this sequence:
 - **`forsim.py`** - Forward simulation wrapper (`COMAKforsim`) used in optimization loops
 - **`dict_converter.py`** - Format conversion utilities for slack length, reference strain, and current length
 - **`utils.py`** - Utilities including `run_with_timeout()` and `copy_file_names_with_strings()`
+- **`cleanup.py`** - CLI tool for removing legacy VTP files from JointMechanics output
+
+### CLI Tools
+
+- **`pycomak-cleanup`** - Remove legacy VTP files (`_ligament_*.vtp`, `_muscle_*.vtp`, `_mesh_*.vtp`) from `joint-mechanics/` directories. Prior to v0.6, JointMechanics output ~30,000 VTP files per subject (~1 GB); new defaults output ~800 files (~100 MB).
+
+```bash
+# Dry run (default) - shows what would be deleted
+pycomak-cleanup --path /path/to/results
+
+# Actually delete files
+pycomak-cleanup --path /path/to/results --execute
+
+# With more parallel workers
+pycomak-cleanup --path /path/to/results --execute --workers 16
+```
+
+Programmatic usage:
+```python
+from pycomak import cleanup_legacy_vtp_files
+result = cleanup_legacy_vtp_files('/path/to/results', execute=True)
+```
 
 ## Key Class APIs
 
@@ -178,6 +200,49 @@ success = forsim.run_forsim()  # Returns True/False
 forsim.run_joint_mechanics_tool()
 passed = forsim.jam_evaluation(dict_criteria)
 ```
+
+### JointMechanics
+```python
+# Default usage (contact surfaces only - ~800 VTP files + ~35 MB H5 = ~100 MB per subject)
+joint_mechanics = JointMechanics(
+    results_dir=results_dir,
+    model_path=model_path,
+    start_time=0.0,
+    end_time=1.0,
+)
+joint_mechanics.run()
+
+# Add bone visualization for specific subjects (e.g., for figures)
+joint_mechanics = JointMechanics(
+    results_dir=results_dir,
+    model_path=model_path,
+    start_time=0.0,
+    end_time=1.0,
+    attached_geometry_bodies='femur_r tibia_r patella_r',  # Add knee bones
+)
+
+# Legacy behavior (ALL outputs - ~30,000 VTP files, ~1 GB per subject)
+joint_mechanics = JointMechanics(
+    results_dir=results_dir,
+    model_path=model_path,
+    start_time=0.0,
+    end_time=1.0,
+    ligaments='all',
+    muscles='all',
+    attached_geometry_bodies='all',
+)
+
+# H5 file only (no VTP visualization files, ~35 MB per subject)
+joint_mechanics = JointMechanics(
+    results_dir=results_dir,
+    model_path=model_path,
+    start_time=0.0,
+    end_time=1.0,
+    write_vtp_files=False,
+)
+```
+
+**Output filtering parameters:** `contacts`, `contact_outputs`, `contact_mesh_properties`, `ligaments`, `ligament_outputs`, `muscles`, `muscle_outputs`, `attached_geometry_bodies`, `write_vtp_files`, `write_h5_file`. New defaults produce minimal output (~100 MB/subject); pass `ligaments='all', muscles='all', attached_geometry_bodies='all'` for legacy behavior (~1 GB/subject).
 
 ## Key Data Structures in defaults.py
 
