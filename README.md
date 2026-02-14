@@ -8,6 +8,11 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+### Additional Dependencies (not pip-installable)
+
+- **opensim** - This project requires the [opensim-jam](https://github.com/opensim-jam-org/opensim-core) fork of OpenSim (by Colin Smith), which includes COMAK tools (`COMAKInverseKinematicsTool`, `COMAKTool`, `JointMechanicsTool`, `ForsimTool`). This must be built from source; the standard `opensim` pip package does not include these tools.
+- **nsosim** - Upstream library for subject-specific model creation (provides `nsosim.osim_utils`).
+
 ## Project Status
 
 This project is currently in **Alpha** stage. It is under active development, and APIs might change.
@@ -131,7 +136,7 @@ See `examples/group_jam_analysis_example.ipynb` for a comprehensive demonstratio
 
 #### pycomak-cleanup
 
-Remove legacy VTP files from `joint-mechanics/` directories. Prior to v0.6, `JointMechanics` output ~30,000 VTP files per subject (~1 GB). The new defaults output only ~800 contact surface files (~100 MB). This tool cleans up legacy files from existing results.
+Remove legacy VTP files from `joint-mechanics/` directories. Previously, `JointMechanics` output ~30,000 VTP files per subject (~1 GB). The new defaults output only ~800 contact surface files (~100 MB). This tool cleans up legacy files from existing results.
 
 **Files deleted:** `_ligament_*.vtp`, `_muscle_*.vtp`, `_mesh_*.vtp`
 **Files kept:** `_contact_*.vtp`, `*.h5`, `*.sto`

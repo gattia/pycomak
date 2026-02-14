@@ -26,7 +26,12 @@ classifiers = [
     "Topic :: Scientific/Engineering",
     "Programming Language :: Python :: 3",
 ]
-dependencies = []
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "h5py",
+    "pandas",
+]
 dynamic = ["version"]
 
 [project.scripts]
@@ -92,4 +97,5 @@ skip = ["*-win32", "*i686", "*aarch64", "*ppc64le", "*s390x", "*musllinux*"]
 run.omit = ["testing/*", "*/*_test.py"]
 
 [tool.pytest.ini_options]
-addopts = "-k 'not train_test.py'"
+testpaths = ["tests"]
+markers = ["requires_opensim: test requires opensim Python bindings"]

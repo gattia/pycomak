@@ -88,7 +88,7 @@ The typical workflow follows this sequence:
 
 ### CLI Tools
 
-- **`pycomak-cleanup`** - Remove legacy VTP files (`_ligament_*.vtp`, `_muscle_*.vtp`, `_mesh_*.vtp`) from `joint-mechanics/` directories. Prior to v0.6, JointMechanics output ~30,000 VTP files per subject (~1 GB); new defaults output ~800 files (~100 MB).
+- **`pycomak-cleanup`** - Remove legacy VTP files (`_ligament_*.vtp`, `_muscle_*.vtp`, `_mesh_*.vtp`) from `joint-mechanics/` directories. Previously, JointMechanics output ~30,000 VTP files per subject (~1 GB); new defaults output ~800 files (~100 MB).
 
 ```bash
 # Dry run (default) - shows what would be deleted
@@ -251,7 +251,7 @@ joint_mechanics = JointMechanics(
 prescribed_coordinates  # Dict[str, str]: Index -> OpenSim coordinate path (36 coordinates)
 primary_coordinates     # Dict[str, str]: Index -> hip/knee/ankle coordinates (5 coordinates)
 secondary_coordinates   # Dict[str, Dict]: Name -> {'max_change': float, 'coordinate': str}
-                       # Includes knee, patella, and menisci (24 coordinates total)
+                       # Includes knee, patella, and menisci (23 coordinates total)
 ```
 
 ### Ligament Reference Strains (slack_length_dict)
@@ -513,3 +513,20 @@ Logs are written to `results_dir/logs/`. Check these for simulation errors.
 
 - **main**: Stable baseline
 - **menisci**: Active development with meniscus kinematics support, breaking API changes from main (see commit history for details)
+
+
+# Plans
+We write all plans in: 
+.claude/plans
+
+The plan gets written as a markdown file. When we complete the plan, or parts of the plan, we move it to the completed folder:
+.claude/plans/completed
+with a name: 
+{original_name}_COMPLETED.md
+
+This completed file includes explicit details of what we did vs. the plan, what we encoutered along the way, and things to consider
+for the future. 
+
+This way we have a history of all plans we've worked on and can
+review them at any point. If the plan is multi-part. Then, 
+typically, we should be making a _COMPLETED.md file for each part. 

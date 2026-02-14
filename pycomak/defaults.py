@@ -47,33 +47,6 @@ primary_coordinates = {
 }
 
 secondary_coordinates = {
-    # # Knee kinematics (rotations and translations)
-    # "knee_add_r": {"max_change": 0.01, "coordinate": "/jointset/knee_r/knee_add_r"},
-    # "knee_rot_r": {"max_change": 0.01, "coordinate": "/jointset/knee_r/knee_rot_r"},
-    # "knee_tx_r": {"max_change": 0.05, "coordinate": "/jointset/knee_r/knee_tx_r"},
-    # "knee_ty_r": {"max_change": 0.05, "coordinate": "/jointset/knee_r/knee_ty_r"},
-    # "knee_tz_r": {"max_change": 0.05, "coordinate": "/jointset/knee_r/knee_tz_r"},
-    # # Patella kinematics (rotations and translations)
-    # "pf_flex_r": {"max_change": 0.1, "coordinate": "/jointset/pf_r/pf_flex_r"},
-    # "pf_rot_r": {"max_change": 0.01, "coordinate": "/jointset/pf_r/pf_rot_r"},
-    # "pf_tilt_r": {"max_change": 0.01, "coordinate": "/jointset/pf_r/pf_tilt_r"},
-    # "pf_tx_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_tx_r"},
-    # "pf_ty_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_ty_r"},
-    # "pf_tz_r": {"max_change": 0.005, "coordinate": "/jointset/pf_r/pf_tz_r"},
-    # # Medial meniscus kinematics (rotations and translations)
-    # "meniscus_medial_flex_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_flex_r"},
-    # "meniscus_medial_rot_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_rot_r"},
-    # "meniscus_medial_add_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_add_r"},
-    # "meniscus_medial_tx_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_tx_r"},
-    # "meniscus_medial_ty_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_ty_r"},
-    # "meniscus_medial_tz_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_medial_r/meniscus_medial_tz_r"},
-    # # Lateral meniscus kinematics (rotations and translations)
-    # "meniscus_lateral_flex_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_flex_r"},
-    # "meniscus_lateral_rot_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_rot_r"},
-    # "meniscus_lateral_add_r": {"max_change": 0.01, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_add_r"},
-    # "meniscus_lateral_tx_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_tx_r"},
-    # "meniscus_lateral_ty_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_ty_r"},
-    # "meniscus_lateral_tz_r": {"max_change": 0.005, "coordinate": "/jointset/meniscus_lateral_r/meniscus_lateral_tz_r"},
     # Knee kinematics (rotations and translations)
     "knee_add_r": {"max_change": 0.005, "coordinate": "/jointset/knee_r/knee_add_r"},
     "knee_rot_r": {"max_change": 0.005, "coordinate": "/jointset/knee_r/knee_rot_r"},
@@ -104,7 +77,6 @@ secondary_coordinates = {
     
 }
 
-# pt_strain_scale = 1
 
 slack_length_dict = {'MCLd1':0.04,'MCLd2':-0.04,'MCLd3':0.0,'MCLd4':0.04,'MCLd5':0.04,
                     'MCLs1':0.04,'MCLs2':0.04,'MCLs3':0.05,'MCLs4':0.05,'MCLs5':0.05,'MCLs6':0.05,
@@ -114,27 +86,6 @@ slack_length_dict = {'MCLd1':0.04,'MCLd2':-0.04,'MCLd3':0.0,'MCLd4':0.04,'MCLd5'
                     'PCLpm1':-0.05,'PCLpm2':-0.12,'PCLpm3':-0.08,'PCLpm4':-0.12,'PCLpm5':-0.1,
                     'LCL1':0.06,'LCL2':0.06,'LCL3':0.06,'LCL4':0.06,
                     
-                    # 'PT1':0.02 * pt_strain_scale,
-                    # 'PT2':0.02 * pt_strain_scale,
-                    # 'PT3':0.00 * pt_strain_scale,
-                    # 'PT4':0.01 * pt_strain_scale,
-                    # 'PT5':0.00 * pt_strain_scale,
-                    # 'PT6':0.02 * pt_strain_scale,
-                    
-                    # 'PT1':0.02 * pt_strain_scale,
-                    # 'PT2':0.02 * pt_strain_scale,
-                    # 'PT3':0.02 * pt_strain_scale,
-                    # 'PT4':0.02 * pt_strain_scale,
-                    # 'PT5':0.02 * pt_strain_scale,
-                    # 'PT6':0.02 * pt_strain_scale,
-
-                    # 'PT1':0.02 * pt_strain_scale,
-                    # 'PT2':0.02 * pt_strain_scale,
-                    # 'PT3':0.005 * pt_strain_scale,
-                    # 'PT4':0.01 * pt_strain_scale,
-                    # 'PT5':0.005 * pt_strain_scale,
-                    # 'PT6':0.02 * pt_strain_scale,
-
                     'PT1':0.02,
                     'PT2':0.02,
                     'PT3':0.02,
