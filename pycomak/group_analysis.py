@@ -503,20 +503,24 @@ class GroupJamAnalysis:
             n_subjects = len(jam_list)
             
             # Extract data
+            # NOTE: We intentionally raise on KeyError rather than silently skipping.
+            # Silent skipping caused the returned data array to have fewer rows than
+            # subject_ids, which corrupted subject-to-data mapping in downstream methods
+            # (extract_values_at_time, identify_outlier_subjects). If a subject is missing
+            # data, fix it upstream or remove it explicitly with remove_subjects().
+            # Common cause of KeyError: typo in coordinate_name.
             data = np.zeros((n_subjects, length))
-            skipped = []
-            
+
             for i, jam in enumerate(jam_list):
                 try:
                     data[i, :] = jam.coordinateset[coordinate_name]['value'][:, 0]
-                except KeyError:
-                    skipped.append(i)
-                    continue
-            
-            # Remove skipped subjects
-            if len(skipped) > 0:
-                data = np.delete(data, skipped, axis=0)
-                print(f"Skipped {len(skipped)}/{n_subjects} subjects in group '{group_name}'")
+                except KeyError as e:
+                    subject_id = group_dict['subject_ids'][i]
+                    raise KeyError(
+                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
+                        f"is missing coordinate '{coordinate_name}': {e}. "
+                        f"Fix the data upstream or remove this subject with remove_subjects()."
+                    ) from e
             
             if return_individuals:
                 results[group_name] = data
@@ -571,21 +575,19 @@ class GroupJamAnalysis:
             length = jam_list[0].forceset['Muscle'][muscle_name][outcome].shape[0]
             n_subjects = len(jam_list)
             
-            # Extract data
+            # Extract data (see get_coordinate_data for rationale on raising KeyError)
             data = np.zeros((n_subjects, length))
-            skipped = []
-            
+
             for i, jam in enumerate(jam_list):
                 try:
                     data[i, :] = jam.forceset['Muscle'][muscle_name][outcome][:, 0]
-                except KeyError:
-                    skipped.append(i)
-                    continue
-            
-            # Remove skipped subjects
-            if len(skipped) > 0:
-                data = np.delete(data, skipped, axis=0)
-                print(f"Skipped {len(skipped)}/{n_subjects} subjects in group '{group_name}'")
+                except KeyError as e:
+                    subject_id = group_dict['subject_ids'][i]
+                    raise KeyError(
+                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
+                        f"is missing muscle '{muscle_name}' outcome '{outcome}': {e}. "
+                        f"Fix the data upstream or remove this subject with remove_subjects()."
+                    ) from e
             
             if return_individuals:
                 results[group_name] = data
@@ -652,22 +654,20 @@ class GroupJamAnalysis:
             length = jam_list[0].forceset['Blankevoort1991Ligament'][fibers[0]][outcome].shape[0]
             n_subjects = len(jam_list)
             
-            # Extract and sum across fibers
+            # Extract and sum across fibers (see get_coordinate_data for rationale on raising KeyError)
             data = np.zeros((n_subjects, length))
-            skipped = []
-            
+
             for i, jam in enumerate(jam_list):
                 try:
                     for fiber in fibers:
                         data[i, :] += jam.forceset['Blankevoort1991Ligament'][fiber][outcome][:, 0]
-                except KeyError:
-                    skipped.append(i)
-                    continue
-            
-            # Remove skipped subjects
-            if len(skipped) > 0:
-                data = np.delete(data, skipped, axis=0)
-                print(f"Skipped {len(skipped)}/{n_subjects} subjects in group '{group_name}'")
+                except KeyError as e:
+                    subject_id = group_dict['subject_ids'][i]
+                    raise KeyError(
+                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
+                        f"is missing ligament fiber '{fiber}' outcome '{outcome}': {e}. "
+                        f"Fix the data upstream or remove this subject with remove_subjects()."
+                    ) from e
             
             if return_individuals:
                 results[group_name] = data
@@ -727,26 +727,24 @@ class GroupJamAnalysis:
             length = outcome_data.shape[0]
             n_subjects = len(jam_list)
             
-            # Extract data
+            # Extract data (see get_coordinate_data for rationale on raising KeyError)
             data = np.zeros((n_subjects, length))
-            skipped = []
-            
+
             for i, jam in enumerate(jam_list):
                 try:
                     outcome_data = jam.forceset['Smith2018ArticularContactForce'][contact_type][cartilage][outcome]
-                    
+
                     if isinstance(axis, int):
                         data[i, :] = np.squeeze(outcome_data[:, axis])
                     elif axis == 'norm':
                         data[i, :] = np.squeeze(np.linalg.norm(outcome_data, axis=1))
-                except KeyError:
-                    skipped.append(i)
-                    continue
-            
-            # Remove skipped subjects
-            if len(skipped) > 0:
-                data = np.delete(data, skipped, axis=0)
-                print(f"Skipped {len(skipped)}/{n_subjects} subjects in group '{group_name}'")
+                except KeyError as e:
+                    subject_id = group_dict['subject_ids'][i]
+                    raise KeyError(
+                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
+                        f"is missing contact data '{contact_type}/{cartilage}/{outcome}': {e}. "
+                        f"Fix the data upstream or remove this subject with remove_subjects()."
+                    ) from e
             
             if return_individuals:
                 results[group_name] = data
@@ -809,30 +807,29 @@ class GroupJamAnalysis:
             length = outcome_data.shape[0]
             n_subjects = len(jam_list)
             
-            # Extract data
+            # Extract data (see get_coordinate_data for rationale on raising KeyError)
             data = np.zeros((n_subjects, length))
-            skipped = []
-            
+
             for i, jam in enumerate(jam_list):
                 try:
                     data_ = jam.forceset['Smith2018ArticularContactForce'][contact_type][cartilage][region][outcome]
-                    
+
                     if isinstance(axis, int):
                         data_ = data_[:, axis]
                     elif axis == 'norm':
                         data_ = np.linalg.norm(data_, axis=1)
                     elif axis in ['pressure', 'area']:
                         data_ = data_
-                    
+
                     data[i, :] = np.squeeze(data_)
-                except KeyError:
-                    skipped.append(i)
-                    continue
-            
-            # Remove skipped subjects
-            if len(skipped) > 0:
-                data = np.delete(data, skipped, axis=0)
-                print(f"Skipped {len(skipped)}/{n_subjects} subjects in group '{group_name}'")
+                except KeyError as e:
+                    subject_id = group_dict['subject_ids'][i]
+                    raise KeyError(
+                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
+                        f"is missing regional contact data "
+                        f"'{contact_type}/{cartilage}/region {region}/{outcome}': {e}. "
+                        f"Fix the data upstream or remove this subject with remove_subjects()."
+                    ) from e
             
             if return_individuals:
                 results[group_name] = data
@@ -1095,7 +1092,11 @@ class GroupJamAnalysis:
             )
         else:
             raise ValueError("Must specify one of: coordinate_name, muscle_name, ligament_name, or region")
-        
+
+        # If single group requested, wrap in dict
+        if group is not None and not isinstance(data_dict, dict):
+            data_dict = {group: data_dict}
+
         # Analyze each group
         for group_name, data in data_dict.items():
             n_subjects, n_timesteps = data.shape
