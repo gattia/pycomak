@@ -206,7 +206,9 @@ class GroupJamAnalysis:
         elif results_folder is not None:
             # Direct results folder provided
             folder_results = results_folder
-            h5_file = os.path.join(folder_results, 'joint-mechanics', '.h5')
+            h5_file = os.path.join(folder_results, 'joint-mechanics', 'joint_mechanics.h5')
+            if not os.path.exists(h5_file):
+                h5_file = os.path.join(folder_results, 'joint-mechanics', '.h5')  # legacy
         
         else:
             # Auto-construct path using pattern
@@ -230,7 +232,9 @@ class GroupJamAnalysis:
                 datetime
             )
             
-            h5_file = os.path.join(folder_results, 'joint-mechanics', '.h5')
+            h5_file = os.path.join(folder_results, 'joint-mechanics', 'joint_mechanics.h5')
+            if not os.path.exists(h5_file):
+                h5_file = os.path.join(folder_results, 'joint-mechanics', '.h5')  # legacy
         
         # Check if h5 file exists
         if not os.path.exists(h5_file):

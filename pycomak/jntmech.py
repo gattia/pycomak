@@ -106,6 +106,7 @@ class JointMechanics(COMAKBASE):
         self.jnt_mech.set_input_forces_file(os.path.join(self.comak_result_dir, '_force.sto'))
         self.jnt_mech.set_input_activations_file(os.path.join(self.comak_result_dir, '_activations.sto'))
         self.jnt_mech.set_use_muscle_physiology(False)
+        self.jnt_mech.set_results_file_basename('joint_mechanics')
         self.jnt_mech.set_results_directory(self.jnt_mech_result_dir)
         self.jnt_mech.set_start_time(start_time)
         self.jnt_mech.set_stop_time(end_time)
