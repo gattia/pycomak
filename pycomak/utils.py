@@ -30,10 +30,10 @@ def copy_file_names_with_strings(str_list, path, overwrite=False):
                 print(f"The file {destination_file} already exists. Skipping.")
             else:
                 shutil.copy(source, destination_file)
-                if os.path.exists(destination_file) and not overwrite:
-                    print(f"Copied {source} to {destination_file}")
-                elif overwrite:
+                if overwrite:
                     print(f"Overwritten {destination_file} with {source}")
+                else:
+                    print(f"Copied {source} to {destination_file}")
 
 
 def run_with_timeout(func, timeout, *args, **kwargs):
@@ -42,6 +42,12 @@ def run_with_timeout(func, timeout, *args, **kwargs):
 
     If the function execution time exceeds `timeout`, the process is terminated,
     and a TimeoutError is raised.
+
+    Warning:
+        Uses multiprocessing.Process, so the function runs in a **separate process**.
+        Any in-memory state changes (e.g., model object modifications) will NOT be
+        reflected in the calling process. Only use this for functions that persist
+        their results to disk (e.g., settle sims, forsim).
 
     Args:
         func (callable): The function to execute.

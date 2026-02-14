@@ -208,8 +208,11 @@ class GroupJamAnalysis:
             folder_results = results_folder
             h5_file = os.path.join(folder_results, 'joint-mechanics', 'joint_mechanics.h5')
             if not os.path.exists(h5_file):
-                h5_file = os.path.join(folder_results, 'joint-mechanics', '.h5')  # legacy
-        
+                # Legacy fallback: early versions of JointMechanicsTool saved the H5 output
+                # without a basename, resulting in a file literally named '.h5'. This handles
+                # loading those old results.
+                h5_file = os.path.join(folder_results, 'joint-mechanics', '.h5')
+
         else:
             # Auto-construct path using pattern
             if subject_folder_pattern is None:
@@ -234,7 +237,10 @@ class GroupJamAnalysis:
             
             h5_file = os.path.join(folder_results, 'joint-mechanics', 'joint_mechanics.h5')
             if not os.path.exists(h5_file):
-                h5_file = os.path.join(folder_results, 'joint-mechanics', '.h5')  # legacy
+                # Legacy fallback: early versions of JointMechanicsTool saved the H5 output
+                # without a basename, resulting in a file literally named '.h5'. This handles
+                # loading those old results.
+                h5_file = os.path.join(folder_results, 'joint-mechanics', '.h5')
         
         # Check if h5 file exists
         if not os.path.exists(h5_file):

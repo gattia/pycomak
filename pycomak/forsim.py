@@ -169,7 +169,7 @@ def run_forsim(
     use_activation_dynamics=False,
     use_tendon_compliance=False,
     use_muscle_physiology=True,
-    unconstrianed_coordinates=UNCONSTRAINED_COORDINATES,
+    unconstrained_coordinates=UNCONSTRAINED_COORDINATES,
 ):
     """
     Runs a forward simulation using OpenSim's ForsimTool.
@@ -192,7 +192,7 @@ def run_forsim(
             Defaults to False.
         use_muscle_physiology (bool, optional): Whether to use full muscle physiology (activation dynamics,
             pennation, force-length-velocity). Defaults to True.
-        unconstrianed_coordinates (list, optional): List of unconstrained coordinate paths for the simulation.
+        unconstrained_coordinates (list, optional): List of unconstrained coordinate paths for the simulation.
             Defaults to UNCONSTRAINED_COORDINATES from module constants.
     """
     ## Perform Simulation with ForsimTool
@@ -209,7 +209,7 @@ def run_forsim(
     forsim.set_use_tendon_compliance(use_tendon_compliance)
     forsim.set_use_muscle_physiology(use_muscle_physiology)
     
-    for idx, coord in enumerate(unconstrianed_coordinates):
+    for idx, coord in enumerate(unconstrained_coordinates):
         forsim.set_unconstrained_coordinates(idx, coord)
     
     forsim.set_prescribed_coordinates_file(os.path.join(folder_save_results, 'kinematics.sto'))
@@ -476,7 +476,7 @@ class COMAKforsim:
         use_muscle_physiology=True, # activation dynamics, pennation angle, force-length-velocity. 
         constant_muscle_control=0.02,
         override_default_muscle_activation=0.02,
-        unconstrianed_coordinates=UNCONSTRAINED_COORDINATES,
+        unconstrained_coordinates=UNCONSTRAINED_COORDINATES,
         max_forsim_time=2*60, # 2 minutes
     ):
         """
@@ -500,7 +500,7 @@ class COMAKforsim:
                 Defaults to 0.02.
             override_default_muscle_activation (float, optional): Override default muscle activation
                 for ForsimTool. Defaults to 0.02.
-            unconstrianed_coordinates (list, optional): List of unconstrained coordinates for ForsimTool.
+            unconstrained_coordinates (list, optional): List of unconstrained coordinates for ForsimTool.
                 Defaults to UNCONSTRAINED_COORDINATES from module constants.
             max_forsim_time (int, optional): Maximum allowed time in seconds for the forsim run.
                 Defaults to 120 (2 minutes).
@@ -524,7 +524,7 @@ class COMAKforsim:
         self.use_muscle_physiology = use_muscle_physiology
         self.constant_muscle_control = constant_muscle_control
         self.override_default_muscle_activation = override_default_muscle_activation
-        self.unconstrianed_coordinates = unconstrianed_coordinates
+        self.unconstrained_coordinates = unconstrained_coordinates
         self.max_forsim_time = max_forsim_time    
         
         create_save_sto(
@@ -564,7 +564,7 @@ class COMAKforsim:
             'use_activation_dynamics': self.use_activation_dynamics,
             'use_tendon_compliance': self.use_tendon_compliance,
             'use_muscle_physiology': self.use_muscle_physiology,
-            'unconstrianed_coordinates': self.unconstrianed_coordinates,
+            'unconstrained_coordinates': self.unconstrained_coordinates,
         }
         try:
             run_with_timeout(run_forsim, self.max_forsim_time, **kwargs)

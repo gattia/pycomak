@@ -299,8 +299,9 @@ class COMAKInverseKinematics(COMAKBASE):
         
         self.comak_ik.set_marker_file(self.markerset_file)
         self.comak_ik.set_output_motion_file(self.comak_ik_filename)
-        self.comak_ik.set_time_range(0, self.start_time_ik-self.start_pad)
-        self.comak_ik.set_time_range(1, self.stop_time_ik+self.stop_pad)
+        ik_start_time = max(0, self.start_time_ik - self.start_pad)
+        self.comak_ik.set_time_range(0, ik_start_time)
+        self.comak_ik.set_time_range(1, self.stop_time_ik + self.stop_pad)
         self.comak_ik.set_report_errors(self.report_errors)
         self.comak_ik.set_report_marker_locations(self.report_marker_locations)
         self.comak_ik.set_ik_constraint_weight(self.ik_constraint_weight)

@@ -294,8 +294,14 @@ class JamAnalysis:
         
         if base_path not in f:
             return
-        
-        print('PROCESSING FRAMETRANSFORMSET => THIS HAS NOT BEEN TESTED BEFORE, PLEASE VERIFY IF IT WORKS')
+
+        # NOTE: This method has never been tested or validated (JAN.11.2022 - AAGATTI).
+        # The legacy version (process_frametransformsset) has a known bug with hardcoded
+        # 'dataset' string. This fast version may have similar issues. Validate before using.
+        raise NotImplementedError(
+            "_process_frametransformsset_fast has never been validated. "
+            "Test thoroughly before using."
+        )
         
         frames_group = f[base_path]
         
@@ -488,9 +494,14 @@ class JamAnalysis:
             h5_filepath (str): Path to the HDF5 file.
             h5_file_idx (int): Index of the current file being processed.
         """
-        ##### JAN.11.2022 - AAGATTI
-        ##### HAVENT TESTED THE BELOW YET - THE EXAMPLE .h5 I USED DID NOT HAVE THIS DATATYPE
-        print('PROCESSING FRAMETRANSFORMSET => THIS HAS NOT BEEN TESTED BEFORE, PLEASE VERIFY IF IT WORKS')
+        # NOTE: This method has never been tested or validated (JAN.11.2022 - AAGATTI).
+        # Known bug: line below uses hardcoded string "dataset" instead of the loop
+        # variable {dataset} in the f-string path. Fix before using.
+        raise NotImplementedError(
+            "process_frametransformsset has never been validated and contains a known bug "
+            "(hardcoded 'dataset' string instead of f-string variable). "
+            "Fix the bug and test before using."
+        )
         frames = get_h5_output(h5_filepath, f'/{self.base_name}/{self.frametransformsset_name}')
         for frame_idx, frame in enumerate(frames):
             outcomes = get_h5_output(h5_filepath, f'/{self.base_name}/{self.frametransformsset_name}/{frame}')
