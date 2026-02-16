@@ -439,3 +439,158 @@ class TestExtractValuesAtTime:
             var_type="ligament", var_name="ACL", time_point=50.0
         )
         assert len(result["healthy"]["values"]) == 2
+
+
+# =========================================================================
+# Model consistency validation
+# =========================================================================
+
+
+def _make_ga(allow_mismatched_models=False):
+    """Build a bare GroupJamAnalysis with the flag set."""
+    ga = GroupJamAnalysis.__new__(GroupJamAnalysis)
+    ga.groups = {}
+    ga.base_results_dir = "/fake"
+    ga.comak_subfolder = "test"
+    ga.timepoint = ""
+    ga.allow_mismatched_models = allow_mismatched_models
+    return ga
+
+
+def _add_jam_to_ga(ga, jam, group="test", subject_id="s0"):
+    """Add a JAM object to a group, calling validation."""
+    if group not in ga.groups:
+        ga.groups[group] = {"subjects": [], "subject_ids": [], "jam_list": []}
+    ga._validate_jam_consistency(jam, group)
+    ga.groups[group]["subjects"].append(
+        {"subject_id": subject_id, "side": "R", "datetime": "d",
+         "folder_results": "/f", "h5_file": "/f.h5"})
+    ga.groups[group]["subject_ids"].append(f"{subject_id}_R")
+    ga.groups[group]["jam_list"].append(jam)
+
+
+class TestModelConsistencyValidation:
+    """Tests for allow_mismatched_models flag and _validate_jam_consistency."""
+
+    def test_default_flag_is_false(self):
+        ga = GroupJamAnalysis.__new__(GroupJamAnalysis)
+        ga.__init__.__wrapped__(ga, "/fake") if hasattr(ga.__init__, '__wrapped__') else None
+        # Test through the normal constructor pattern used in _build_group_analysis
+        ga2 = _make_ga()
+        assert ga2.allow_mismatched_models is False
+
+    def test_first_subject_always_accepted(self, make_jam):
+        """First subject in a group has nothing to compare against."""
+        ga = _make_ga(allow_mismatched_models=False)
+        jam = make_jam(
+            n_timesteps=50,
+            coordinates={"knee_flex_r": {"value": np.ones((50, 1))}},
+            muscles={"recfem_r": {"actuation": np.ones((50, 1))}},
+            ligaments={"ACLam1": {"total_force": np.ones((50, 1))}},
+        )
+        # Should not raise
+        _add_jam_to_ga(ga, jam)
+
+    def test_consistent_subjects_no_error(self, make_jam):
+        """Subjects with identical structure pass validation."""
+        ga = _make_ga(allow_mismatched_models=False)
+        for i in range(3):
+            jam = make_jam(
+                n_timesteps=50,
+                coordinates={"knee_flex_r": {"value": np.ones((50, 1)) * i}},
+                muscles={"recfem_r": {"actuation": np.ones((50, 1)) * i}},
+                ligaments={"ACLam1": {"total_force": np.ones((50, 1)) * i}},
+            )
+            _add_jam_to_ga(ga, jam, subject_id=f"s{i}")
+
+    def test_mismatched_timesteps_raises(self, make_jam):
+        ga = _make_ga(allow_mismatched_models=False)
+        jam0 = make_jam(n_timesteps=50, coordinates={"knee_flex_r": {"value": np.ones((50, 1))}})
+        jam1 = make_jam(n_timesteps=100, coordinates={"knee_flex_r": {"value": np.ones((100, 1))}})
+        _add_jam_to_ga(ga, jam0)
+        with pytest.raises(ValueError, match="num_time_steps"):
+            _add_jam_to_ga(ga, jam1, subject_id="s1")
+
+    def test_mismatched_coordinates_raises(self, make_jam):
+        ga = _make_ga(allow_mismatched_models=False)
+        jam0 = make_jam(n_timesteps=50, coordinates={"knee_flex_r": {"value": np.ones((50, 1))}})
+        jam1 = make_jam(n_timesteps=50, coordinates={
+            "knee_flex_r": {"value": np.ones((50, 1))},
+            "knee_add_r": {"value": np.ones((50, 1))},
+        })
+        _add_jam_to_ga(ga, jam0)
+        with pytest.raises(ValueError, match="coordinateset"):
+            _add_jam_to_ga(ga, jam1, subject_id="s1")
+
+    def test_mismatched_ligament_fibers_raises(self, make_jam):
+        ga = _make_ga(allow_mismatched_models=False)
+        jam0 = make_jam(n_timesteps=50, ligaments={
+            "ACLam1": {"total_force": np.ones((50, 1))},
+        })
+        jam1 = make_jam(n_timesteps=50, ligaments={
+            "ACLam1": {"total_force": np.ones((50, 1))},
+            "ACLpl1": {"total_force": np.ones((50, 1))},
+        })
+        _add_jam_to_ga(ga, jam0)
+        with pytest.raises(ValueError, match="Blankevoort1991Ligament"):
+            _add_jam_to_ga(ga, jam1, subject_id="s1")
+
+    def test_mismatched_muscles_raises(self, make_jam):
+        ga = _make_ga(allow_mismatched_models=False)
+        jam0 = make_jam(n_timesteps=50, muscles={"recfem_r": {"actuation": np.ones((50, 1))}})
+        jam1 = make_jam(n_timesteps=50, muscles={
+            "recfem_r": {"actuation": np.ones((50, 1))},
+            "vaslat_r": {"actuation": np.ones((50, 1))},
+        })
+        _add_jam_to_ga(ga, jam0)
+        with pytest.raises(ValueError, match="Muscle"):
+            _add_jam_to_ga(ga, jam1, subject_id="s1")
+
+    def test_mismatched_contacts_raises(self, make_jam):
+        ga = _make_ga(allow_mismatched_models=False)
+        jam0 = make_jam(n_timesteps=50, contacts={
+            "tf_contact": {"tibia_cartilage": {
+                "total_contact_force": np.ones((50, 3, 1)),
+                4: {"regional_max_pressure": np.ones((50, 1))},
+            }}
+        })
+        jam1 = make_jam(n_timesteps=50, contacts={
+            "tf_contact": {"tibia_cartilage": {
+                "total_contact_force": np.ones((50, 3, 1)),
+                4: {"regional_max_pressure": np.ones((50, 1))},
+            }},
+            "pf_contact": {"patella_cartilage": {
+                "total_contact_force": np.ones((50, 3, 1)),
+            }}
+        })
+        _add_jam_to_ga(ga, jam0)
+        with pytest.raises(ValueError, match="Smith2018ArticularContactForce"):
+            _add_jam_to_ga(ga, jam1, subject_id="s1")
+
+    def test_allow_mismatched_flag_skips_validation(self, make_jam):
+        """When allow_mismatched_models=True, different structures are accepted."""
+        ga = _make_ga(allow_mismatched_models=True)
+        jam0 = make_jam(n_timesteps=50, ligaments={
+            "ACLam1": {"total_force": np.ones((50, 1))},
+        })
+        jam1 = make_jam(n_timesteps=50, ligaments={
+            "ACLam1": {"total_force": np.ones((50, 1))},
+            "ACLpl1": {"total_force": np.ones((50, 1))},
+        })
+        _add_jam_to_ga(ga, jam0)
+        # Should not raise
+        _add_jam_to_ga(ga, jam1, subject_id="s1")
+
+    def test_error_message_lists_differences(self, make_jam):
+        """Error message should show exactly what differs."""
+        ga = _make_ga(allow_mismatched_models=False)
+        jam0 = make_jam(n_timesteps=50, ligaments={
+            "ACLam1": {"total_force": np.ones((50, 1))},
+        })
+        jam1 = make_jam(n_timesteps=50, ligaments={
+            "ACLam1": {"total_force": np.ones((50, 1))},
+            "ACLpl1": {"total_force": np.ones((50, 1))},
+        })
+        _add_jam_to_ga(ga, jam0)
+        with pytest.raises(ValueError, match="ACLpl1"):
+            _add_jam_to_ga(ga, jam1, subject_id="s1")

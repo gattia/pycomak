@@ -89,24 +89,30 @@ class GroupJamAnalysis:
     """
     
     def __init__(
-        self, 
-        base_results_dir: str, 
+        self,
+        base_results_dir: str,
         comak_subfolder: str = 'comak_results',
-        timepoint: str = '00m'
+        timepoint: str = '00m',
+        allow_mismatched_models: bool = False
     ):
         """
         Initialize GroupJamAnalysis.
-        
+
         Args:
             base_results_dir: Base directory containing simulation results
             comak_subfolder: Subfolder name for COMAK results (default: 'comak_results')
             timepoint: Timepoint identifier for subject folders (default: '00m')
                       Set to empty string '' if not used in your folder structure
+            allow_mismatched_models: If False (default), raises ValueError when adding
+                a subject whose data structure (timesteps, coordinates, muscles, ligaments,
+                contacts) differs from the first subject in the group. Set to True to allow
+                comparing subjects from different model configurations.
         """
         self.groups = {}
         self.base_results_dir = base_results_dir
         self.comak_subfolder = comak_subfolder
         self.timepoint = timepoint
+        self.allow_mismatched_models = allow_mismatched_models
         
     def add_subject(
         self, 
@@ -283,11 +289,82 @@ class GroupJamAnalysis:
                     muscle_outcomes=muscle_outcomes,
                     ligament_outcomes=ligament_outcomes
                 )
-            
+
+            # Validate structural consistency against existing subjects
+            self._validate_jam_consistency(jam, group)
+
             self.groups[group]['jam_list'].append(jam)
         
         return True
-    
+
+    def _validate_jam_consistency(self, new_jam: 'JamAnalysis', group: str):
+        """
+        Validate that a new JAM object has the same data structure as existing
+        subjects in the group.
+
+        Compares timesteps, coordinate names, muscle names, ligament fiber names,
+        and contact structure. Raises ValueError with a clear message listing
+        differences if allow_mismatched_models is False.
+
+        Args:
+            new_jam: The JamAnalysis object to validate.
+            group: The group name to validate against.
+
+        Raises:
+            ValueError: If structures differ and allow_mismatched_models is False.
+        """
+        if self.allow_mismatched_models:
+            return
+
+        if group not in self.groups or len(self.groups[group]['jam_list']) == 0:
+            return
+
+        ref_jam = self.groups[group]['jam_list'][0]
+        differences = []
+
+        # Timesteps
+        if new_jam.num_time_steps != ref_jam.num_time_steps:
+            differences.append(
+                f"num_time_steps: expected {ref_jam.num_time_steps}, "
+                f"got {new_jam.num_time_steps}"
+            )
+
+        # Coordinates
+        ref_coords = set(ref_jam.coordinateset.keys())
+        new_coords = set(new_jam.coordinateset.keys())
+        if ref_coords != new_coords:
+            added = new_coords - ref_coords
+            removed = ref_coords - new_coords
+            parts = ["coordinateset mismatch:"]
+            if added:
+                parts.append(f"  extra: {sorted(added)}")
+            if removed:
+                parts.append(f"  missing: {sorted(removed)}")
+            differences.append("\n".join(parts))
+
+        # Forceset components (Muscle, Blankevoort1991Ligament, Smith2018ArticularContactForce)
+        for component in set(ref_jam.forceset.keys()) | set(new_jam.forceset.keys()):
+            ref_keys = set(ref_jam.forceset.get(component, {}).keys())
+            new_keys = set(new_jam.forceset.get(component, {}).keys())
+            if ref_keys != new_keys:
+                added = new_keys - ref_keys
+                removed = ref_keys - new_keys
+                parts = [f"{component} mismatch:"]
+                if added:
+                    parts.append(f"  extra: {sorted(added, key=str)}")
+                if removed:
+                    parts.append(f"  missing: {sorted(removed, key=str)}")
+                differences.append("\n".join(parts))
+
+        if differences:
+            diff_str = "\n".join(differences)
+            raise ValueError(
+                f"Model structure mismatch in group '{group}'. New subject's data "
+                f"structure differs from existing subjects:\n{diff_str}\n"
+                f"If comparing different model configurations is intentional, set "
+                f"allow_mismatched_models=True."
+            )
+
     def _filter_jam_data(
         self,
         jam: 'JamAnalysis',

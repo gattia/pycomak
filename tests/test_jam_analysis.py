@@ -287,6 +287,33 @@ class TestEdgeCases:
         jam.jam_analysis([str(filepath)], base_name="custom")
         assert "test_coord" in jam.coordinateset
 
+    def test_mismatched_timesteps_raises(self, create_h5):
+        """Loading H5 files with different timestep counts should fail.
+
+        Arrays are pre-allocated from the first file's timestep count, so a second
+        file with a different count will crash on numpy broadcasting.
+        """
+        h5_a = create_h5(filename="short.h5", n_timesteps=50,
+                         muscles={"recfem_r": ["actuation"]})
+        h5_b = create_h5(filename="long.h5", n_timesteps=100,
+                         muscles={"recfem_r": ["actuation"]})
+        jam = JamAnalysis()
+        with pytest.raises(Exception):
+            jam.jam_analysis([str(h5_a), str(h5_b)])
+
+    def test_all_files_missing_attributes(self, tmp_path):
+        """When all files are missing, time/num_time_steps are never set."""
+        jam = JamAnalysis()
+        jam.jam_analysis([
+            str(tmp_path / "missing_a.h5"),
+            str(tmp_path / "missing_b.h5"),
+        ])
+        assert jam.num_missing_files == 2
+        assert jam.num_files == 2
+        # time and num_time_steps are never set when all files are missing
+        assert not hasattr(jam, "time")
+        assert not hasattr(jam, "num_time_steps")
+
 
 # =========================================================================
 # Legacy helper functions
