@@ -95,12 +95,22 @@ class TestGetTotalLigamentForce:
         # Should be PT1 + PT2 = [15, 30], NOT PT1 + PT2 + mPTl1 = [115, 230]
         np.testing.assert_array_almost_equal(result, [15.0, 30.0])
 
-    def test_pfl_prefix_specificity(self, make_jam):
-        """'lPFL' should match only lPFL1, not mPFL1.
+    def test_bare_pfl_does_not_match_prefixed_variants(self, make_jam):
+        """'PFL' should match PFL1 only, not lPFL1 or mPFL1 (startswith matching)."""
+        jam = self._make_jam_with_ligaments(
+            make_jam,
+            {
+                "lPFL1": np.array([10.0]),
+                "mPFL1": np.array([20.0]),
+                "PFL1": np.array([30.0]),
+            },
+        )
+        result = get_total_ligament_force(jam, "PFL")
+        # startswith: "lPFL1".startswith("PFL") is False, "mPFL1".startswith("PFL") is False
+        np.testing.assert_array_almost_equal(result, [30.0])
 
-        This passes because 'lPFL' is not a substring of 'mPFL1' — but the
-        underlying matching logic is still substring-based, which is fragile.
-        """
+    def test_pfl_prefix_specificity(self, make_jam):
+        """'lPFL' should match only lPFL1, not mPFL1."""
         jam = self._make_jam_with_ligaments(
             make_jam,
             {
@@ -253,3 +263,14 @@ class TestAnalyzeCriteria:
         assert passed2 is False
         # ptp_ should be overwritten to 2000, not accumulated
         assert criteria["ligaments"]["PT"]["ptp_"] == pytest.approx(2000.0)
+
+    def test_multi_file_jam_raises(self, make_jam):
+        """analyze_criteria rejects multi-file JamAnalysis objects."""
+        jam = self._make_jam_for_criteria(
+            make_jam,
+            lig_forces={"PT1": np.array([10.0])},
+        )
+        jam.num_files = 3
+        criteria = {"ligaments": {"PT": {"max_range": 1100}}}
+        with pytest.raises(ValueError, match="single-file"):
+            analyze_criteria(jam, criteria, "ligaments")

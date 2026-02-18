@@ -768,3 +768,55 @@ class TestFilterThenGetData:
                 outcome="regional_max_pressure", axis="pressure",
                 group="healthy", return_individuals=True,
             )
+
+    def test_get_regional_data_after_filtering(self, make_jam):
+        """get_regional_contact_data returns correct values after _filter_jam_data."""
+        n = 20
+        region4_pressure = np.ones((n, 1)) * 100
+        region5_pressure = np.ones((n, 1)) * 200
+
+        ga = GroupJamAnalysis.__new__(GroupJamAnalysis)
+        ga.groups = {"test": {"subjects": [], "subject_ids": [], "jam_list": []}}
+        ga.base_results_dir = "/fake"
+        ga.comak_subfolder = "test"
+        ga.timepoint = ""
+        ga.removal_history = []
+        ga.allow_mismatched_models = False
+
+        for i in range(2):
+            contacts = {
+                "tf_contact": {
+                    "tibia_cartilage": {
+                        "total_contact_force": np.ones((n, 3, 1)),
+                        0: {"regional_max_pressure": np.ones((n, 1)) * 999},
+                        4: {"regional_max_pressure": region4_pressure * (i + 1)},
+                        5: {"regional_max_pressure": region5_pressure * (i + 1)},
+                    }
+                }
+            }
+            jam = make_jam(n_timesteps=n, contacts=contacts)
+
+            # Filter to regions 4 and 5 only
+            ga._filter_jam_data(jam, regions=[4, 5])
+
+            ga.groups["test"]["subjects"].append(
+                {"subject_id": f"s{i}", "side": "R", "datetime": "d",
+                 "folder_results": "/f", "h5_file": "/f.h5"})
+            ga.groups["test"]["subject_ids"].append(f"s{i}_R")
+            ga.groups["test"]["jam_list"].append(jam)
+
+        data4 = ga.get_regional_contact_data(
+            region=4, outcome="regional_max_pressure", axis="pressure",
+            group="test", return_individuals=True,
+        )
+        # Subject 0: 100, Subject 1: 200
+        np.testing.assert_array_almost_equal(data4[0, :], 100.0)
+        np.testing.assert_array_almost_equal(data4[1, :], 200.0)
+
+        data5 = ga.get_regional_contact_data(
+            region=5, outcome="regional_max_pressure", axis="pressure",
+            group="test", return_individuals=True,
+        )
+        # Subject 0: 200, Subject 1: 400
+        np.testing.assert_array_almost_equal(data5[0, :], 200.0)
+        np.testing.assert_array_almost_equal(data5[1, :], 400.0)

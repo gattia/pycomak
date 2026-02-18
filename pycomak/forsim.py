@@ -325,6 +325,12 @@ def analyze_criteria(jam, criteria_dict, criteria_type, passed=True):
             - dict: The updated `criteria_dict` with 'ptp_', 'min_', and 'max_' values added for each item.
             - bool: The updated `passed` status.
     """
+    if jam.num_files > 1:
+        raise ValueError(
+            f"analyze_criteria expects single-file JamAnalysis, got {jam.num_files} files. "
+            f"Evaluate each file separately."
+        )
+
     for name, criteria in criteria_dict[criteria_type].items():
         if criteria_type == 'ligaments':
             data = get_total_ligament_force(jam, ligament_name=name)
