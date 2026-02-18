@@ -1,5 +1,6 @@
 import h5py
 import os
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -123,6 +124,7 @@ class JamAnalysis:
         self.coordinateset = {}
         self.frametransformsset = {}
         self.comak = {}
+        self._analyzed = False
     
     # =========================================================================
     # OPTIMIZED processing methods - work with open file handle
@@ -198,12 +200,21 @@ class JamAnalysis:
                 elif isinstance(item, h5py.Dataset):
                     # It's a dataset
                     data = np.array(item)
-                    
+
                     if 'regional' in item_name:
                         # Regional scalar data (pressure, area) - has shape (n_timesteps, n_regions)
                         n_rows = data.shape[0]
                         n_regions = data.shape[1] if len(data.shape) > 1 else 1
-                        
+
+                        if n_regions > 6:
+                            warnings.warn(
+                                f"Contact surface '{forceset_name}/{mesh_name}' has "
+                                f"{n_regions} regions but only 6 are supported. "
+                                f"Regions {6}-{n_regions - 1} will be dropped.",
+                                UserWarning,
+                                stacklevel=2,
+                            )
+
                         for region_idx in range(min(6, n_regions)):
                             if item_name not in self.forceset[component][forceset_name][mesh_name][region_idx]:
                                 self.forceset[component][forceset_name][mesh_name][region_idx][item_name] = \
@@ -242,13 +253,21 @@ class JamAnalysis:
             
             if isinstance(item, h5py.Dataset):
                 data = np.array(item)
-                
+
+                if data.shape[0] != self.num_time_steps:
+                    raise ValueError(
+                        f"Dataset '{component}/{forceset_name}/{item_name}' has "
+                        f"{data.shape[0]} timesteps but /time has {self.num_time_steps} "
+                        f"in file '{self.h5_file_list[h5_file_idx]}'. "
+                        f"The file may be truncated from a crashed simulation."
+                    )
+
                 if item_name not in self.forceset[component][forceset_name]:
                     self.forceset[component][forceset_name][item_name] = \
                         np.zeros((self.num_time_steps, self.num_files))
-                
+
                 self.forceset[component][forceset_name][item_name][:, h5_file_idx] = data
-    
+
     def _process_coordinateset_fast(self, f, h5_file_idx):
         """
         Process coordinateset data with an already-open file handle.
@@ -525,25 +544,65 @@ class JamAnalysis:
                         }
                     self.frametransformsset[transform_type][dataset][:, h5_file_idx] = data
 
+    def _get_file_structure(self, f):
+        """
+        Extract the structural summary of an already-open H5 file for comparison.
+        Only reads key names from the open handle — no extra file I/O.
+
+        Args:
+            f: Open h5py.File handle
+
+        Returns:
+            dict with sets of component names (muscles, ligaments, coordinates, contacts)
+        """
+        structure = {
+            'muscles': set(),
+            'ligaments': set(),
+            'coordinates': set(),
+            'contacts': set(),
+        }
+
+        base_path = f'/{self.base_name}'
+        if base_path not in f:
+            return structure
+
+        forceset_path = f'{base_path}/{self.forceset_name}'
+        if forceset_path in f:
+            forceset_group = f[forceset_path]
+            for component in forceset_group.keys():
+                if component == self.SmithArticularContactName:
+                    for contact_name in forceset_group[component].keys():
+                        structure['contacts'].add(contact_name)
+                elif component == 'Muscle':
+                    for name in forceset_group[component].keys():
+                        structure['muscles'].add(name)
+                elif component == 'Blankevoort1991Ligament':
+                    for name in forceset_group[component].keys():
+                        structure['ligaments'].add(name)
+
+        coordset_path = f'{base_path}/{self.coordset_name}'
+        if coordset_path in f:
+            for name in f[coordset_path].keys():
+                structure['coordinates'].add(name)
+
+        return structure
+
     # =========================================================================
     # Main analysis method - OPTIMIZED
     # =========================================================================
 
     def jam_analysis(
-        self, 
+        self,
         h5_file_list,
         base_name=None,
-        names=None
+        names=None,
+        allow_mismatched_files=False
     ):
         """
         Performs the main analysis by reading and processing data from a list of HDF5 files.
-        
+
         OPTIMIZED: This method now opens each H5 file only ONCE instead of thousands
         of times, providing ~50x speedup on NAS storage.
-
-        Iterates through the provided HDF5 files, checks for their existence and format.
-        For each file, it extracts time information (for the first file) and then processes
-        ForceSet, CoordinateSet, FrameTransformsSet, and any COMAK-specific data groups.
 
         Args:
             h5_file_list (list or tuple): A list or tuple of paths to HDF5 files.
@@ -551,11 +610,22 @@ class JamAnalysis:
                 If None, uses the class default `self.base_name`. Defaults to None.
             names (list, optional): A list of names to associate with each file. If None,
                 files are named by their index. Defaults to None.
+            allow_mismatched_files (bool, optional): If False (default), raises ValueError
+                when files have different structures (different muscles, ligaments, coordinates,
+                or contacts). Set to True to allow combining files with different structures.
 
         Raises:
+            RuntimeError: If jam_analysis() has already been called on this instance.
             Exception: If `h5_file_list` is not a list or tuple.
             Exception: If any file in `h5_file_list` is not in .h5 format.
+            ValueError: If files have different structures and allow_mismatched_files is False.
         """
+        if self._analyzed:
+            raise RuntimeError(
+                "jam_analysis() has already been called on this instance. "
+                "Create a new JamAnalysis() instance to analyze different files."
+            )
+
         if base_name is not None:
             self.base_name = base_name
 
@@ -563,7 +633,7 @@ class JamAnalysis:
             raise Exception(f'`h5_file_list` is type: {type(h5_file_list)} and should be type `list` or `tuple`')
         else:
             self.h5_file_list = h5_file_list
-        
+
         self.num_files = len(h5_file_list)
 
         if names is not None:
@@ -571,7 +641,11 @@ class JamAnalysis:
         else:
             for idx in range(self.num_files):
                 self.names.append(str(idx))
-        
+
+        # For structure validation across files (checked inside the loop, no extra I/O)
+        ref_structure = None
+        ref_filepath = None
+
         # Read each h5 file
         for h5_file_idx, h5_filepath in enumerate(self.h5_file_list):
             # Test to make sure file exists
@@ -580,12 +654,12 @@ class JamAnalysis:
                 self.num_missing_files += 1
                 self.missing_files.append(
                     {'idx': h5_file_idx,
-                     'path': h5_filepath 
+                     'path': h5_filepath
                     }
                 )
                 continue
 
-            # Test to make sure that it is an .h5 file being passed 
+            # Test to make sure that it is an .h5 file being passed
             filename = os.path.basename(h5_filepath)
 
             if not filename.endswith('.h5'):
@@ -593,16 +667,46 @@ class JamAnalysis:
 
             # OPTIMIZED: Open file ONCE and process everything
             with h5py.File(h5_filepath, "r") as f:
+                # Validate structure consistency using the already-open handle
+                if not allow_mismatched_files and self.num_files > 1:
+                    cur_structure = self._get_file_structure(f)
+                    if ref_structure is None:
+                        ref_structure = cur_structure
+                        ref_filepath = h5_filepath
+                    else:
+                        differences = []
+                        for category in ('muscles', 'ligaments', 'coordinates', 'contacts'):
+                            if ref_structure[category] != cur_structure[category]:
+                                extra = cur_structure[category] - ref_structure[category]
+                                missing = ref_structure[category] - cur_structure[category]
+                                parts = [f"{category} structure mismatch:"]
+                                parts.append(f"  Reference: {os.path.basename(ref_filepath)}")
+                                parts.append(f"  Mismatched: {os.path.basename(h5_filepath)}")
+                                if extra:
+                                    parts.append(f"  Extra: {sorted(extra)}")
+                                if missing:
+                                    parts.append(f"  Missing: {sorted(missing)}")
+                                differences.append("\n".join(parts))
+                        if differences:
+                            diff_str = "\n".join(differences)
+                            raise ValueError(
+                                f"File structure mismatch detected across H5 files:\n"
+                                f"{diff_str}\n"
+                                f"All files must have the same muscles, ligaments, "
+                                f"coordinates, and contacts. To allow mismatched files, "
+                                f"pass allow_mismatched_files=True to jam_analysis()."
+                            )
+
                 # Get time information from first file
                 if h5_file_idx == 0:
                     self.time = np.array(f['/time'])
                     self.num_time_steps = len(self.time)
-                
+
                 # Get the data groups in the h5 file
                 if f'/{self.base_name}' in f:
                     model_group = f[f'/{self.base_name}']
                     h5_groups = list(model_group.keys())
-                    
+
                     for group in h5_groups:
                         if group == self.forceset_name:
                             self._process_forceset_fast(f, h5_file_idx)
@@ -610,9 +714,11 @@ class JamAnalysis:
                             self._process_coordinateset_fast(f, h5_file_idx)
                         elif group == self.frametransformsset_name:
                             self._process_frametransformsset_fast(f, h5_file_idx)
-                
+
                 # Process COMAK data if it exists
                 self._process_comak_fast(f, h5_file_idx)
+
+        self._analyzed = True
     
     def plot_muscle_output(self, muscle_name, param_name, fontsize=20, linewidth=2, ax=None, label=None):
         """

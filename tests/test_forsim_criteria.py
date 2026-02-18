@@ -81,6 +81,39 @@ class TestGetTotalLigamentForce:
         result = get_total_ligament_force(jam, "MCL")
         np.testing.assert_array_almost_equal(result, [60.0])
 
+    def test_prefix_matching_not_substring(self, make_jam):
+        """'PT' should match PT1, PT2 but NOT mPTl1 (hypothetical fiber)."""
+        jam = self._make_jam_with_ligaments(
+            make_jam,
+            {
+                "PT1": np.array([10.0, 20.0]),
+                "PT2": np.array([5.0, 10.0]),
+                "mPTl1": np.array([100.0, 200.0]),
+            },
+        )
+        result = get_total_ligament_force(jam, "PT")
+        # Should be PT1 + PT2 = [15, 30], NOT PT1 + PT2 + mPTl1 = [115, 230]
+        np.testing.assert_array_almost_equal(result, [15.0, 30.0])
+
+    def test_pfl_prefix_specificity(self, make_jam):
+        """'lPFL' should match only lPFL1, not mPFL1.
+
+        This passes because 'lPFL' is not a substring of 'mPFL1' — but the
+        underlying matching logic is still substring-based, which is fragile.
+        """
+        jam = self._make_jam_with_ligaments(
+            make_jam,
+            {
+                "lPFL1": np.array([10.0]),
+                "mPFL1": np.array([50.0]),
+            },
+        )
+        result_l = get_total_ligament_force(jam, "lPFL")
+        np.testing.assert_array_almost_equal(result_l, [10.0])
+
+        result_m = get_total_ligament_force(jam, "mPFL")
+        np.testing.assert_array_almost_equal(result_m, [50.0])
+
 
 # =========================================================================
 # analyze_criteria
@@ -194,3 +227,29 @@ class TestAnalyzeCriteria:
         criteria, passed = analyze_criteria(jam, criteria, "coords")
         assert passed is True
         assert "ptp_" in criteria["coords"]["pf_tx_r"]
+
+    def test_criteria_dict_reuse_across_calls(self, make_jam):
+        """Reusing the same criteria dict across calls should overwrite, not accumulate.
+
+        This documents existing correct behavior — analyze_criteria uses .update()
+        which overwrites previous ptp_/min_/max_ values.
+        """
+        # First call: PT range = 500 (passes max_range=1100)
+        jam1 = self._make_jam_for_criteria(
+            make_jam,
+            lig_forces={"PT1": np.array([0.0, 500.0])},
+        )
+        criteria = {"ligaments": {"PT": {"max_range": 1100}}}
+        criteria, passed1 = analyze_criteria(jam1, criteria, "ligaments")
+        assert passed1 is True
+        assert criteria["ligaments"]["PT"]["ptp_"] == pytest.approx(500.0)
+
+        # Second call with DIFFERENT data: PT range = 2000 (fails max_range=1100)
+        jam2 = self._make_jam_for_criteria(
+            make_jam,
+            lig_forces={"PT1": np.array([0.0, 2000.0])},
+        )
+        criteria, passed2 = analyze_criteria(jam2, criteria, "ligaments")
+        assert passed2 is False
+        # ptp_ should be overwritten to 2000, not accumulated
+        assert criteria["ligaments"]["PT"]["ptp_"] == pytest.approx(2000.0)

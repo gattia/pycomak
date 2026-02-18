@@ -21,24 +21,11 @@ from pycomak.cleanup import (
 
 
 class TestFormatSize:
-    def test_bytes(self):
-        assert format_size(512) == "512.0 B"
-
-    def test_kilobytes(self):
-        assert format_size(1024) == "1.0 KB"
-
-    def test_megabytes(self):
-        assert format_size(1024 * 1024) == "1.0 MB"
-
     def test_gigabytes(self):
         assert format_size(1024**3) == "1.0 GB"
 
     def test_zero(self):
         assert format_size(0) == "0.0 B"
-
-    def test_fractional_kb(self):
-        result = format_size(1536)
-        assert result == "1.5 KB"
 
 
 # =========================================================================

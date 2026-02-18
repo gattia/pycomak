@@ -38,6 +38,7 @@ def _build_group_analysis(make_jam, n_subjects=3, n_timesteps=101, group="health
     ga.base_results_dir = "/fake"
     ga.comak_subfolder = "comak_results"
     ga.timepoint = "00m"
+    ga.removal_history = []
 
     ga.groups[group] = {
         "subjects": [],
@@ -329,6 +330,7 @@ class TestIdentifyOutlierSubjects:
         ga.base_results_dir = "/fake"
         ga.comak_subfolder = "test"
         ga.timepoint = ""
+        ga.removal_history = []
 
         for i in range(n_subjects):
             jam = make_jam(
@@ -454,6 +456,7 @@ def _make_ga(allow_mismatched_models=False):
     ga.comak_subfolder = "test"
     ga.timepoint = ""
     ga.allow_mismatched_models = allow_mismatched_models
+    ga.removal_history = []
     return ga
 
 
@@ -594,3 +597,174 @@ class TestModelConsistencyValidation:
         _add_jam_to_ga(ga, jam0)
         with pytest.raises(ValueError, match="ACLpl1"):
             _add_jam_to_ga(ga, jam1, subject_id="s1")
+
+
+# =========================================================================
+# Failure mode: ligament prefix vs substring matching (Test 5)
+# =========================================================================
+
+
+class TestLigamentPrefixMatching:
+    """Ligament fiber matching should use prefix (startswith), not substring (in).
+
+    Currently 'CL' in 'MCLd1' is True — this is a false positive.
+    The code should use startswith to prevent this.
+    """
+
+    def test_ligament_data_uses_prefix_matching(self, make_jam):
+        """'CL' should NOT match 'MCLd1' or 'LCL1' — no fiber starts with 'CL'."""
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
+        # The default _build_group_analysis has fibers: ACLam1, ACLpl1
+        # Also add MCLd1, MCLs1, LCL1 to make the test more explicit
+        for jam in ga.groups["healthy"]["jam_list"]:
+            jam.forceset["Blankevoort1991Ligament"]["MCLd1"] = {
+                "total_force": np.ones((20, 1))
+            }
+            jam.forceset["Blankevoort1991Ligament"]["MCLs1"] = {
+                "total_force": np.ones((20, 1))
+            }
+            jam.forceset["Blankevoort1991Ligament"]["LCL1"] = {
+                "total_force": np.ones((20, 1))
+            }
+
+        # 'CL' should NOT match anything — no fiber STARTS with 'CL'
+        # Currently 'CL' matches MCLd1, MCLs1, LCL1, ACLam1, ACLpl1 via substring
+        with pytest.raises((ValueError, KeyError)):
+            ga.get_ligament_data("CL", group="healthy", return_individuals=True)
+
+
+# =========================================================================
+# Failure mode: single-subject group statistics (Test 6)
+# =========================================================================
+
+
+class TestSingleSubjectEdgeCases:
+    """Edge cases when a group has only 1 subject."""
+
+    def test_single_subject_stats_no_crash(self, make_jam):
+        """get_coordinate_data with n=1 should return std=0, ste=0."""
+        ga = _build_group_analysis(make_jam, n_subjects=1, n_timesteps=50)
+        data = ga.get_coordinate_data(
+            "knee_flex_r", group="healthy", return_individuals=False
+        )
+        assert data["n"] == 1
+        # std and ste should be 0 (or NaN for ste, but 0 is acceptable)
+        assert np.all(np.isfinite(data["std"]))
+        assert np.all(np.isfinite(data["ste"]))
+
+    def test_single_subject_outlier_detection_no_crash(self, make_jam):
+        """identify_outlier_subjects with 1 subject should not crash on division by zero.
+
+        With n=1, group_std=0. The z-score print line does (value - mean) / std,
+        but since there are no outliers detected (0 > threshold * 0 is always False
+        for non-zero values), the print line is never reached.
+        """
+        ga = _build_group_analysis(make_jam, n_subjects=1, n_timesteps=50)
+        outliers = ga.identify_outlier_subjects(
+            coordinate_name="knee_flex_r", threshold_std=2.0
+        )
+        # Should return empty outlier list, not crash
+        assert len(outliers["healthy"]["outlier_indices"]) == 0
+
+
+# =========================================================================
+# Failure mode: remove_subjects edge cases + history (Test 7)
+# =========================================================================
+
+
+class TestRemoveSubjectsEdgeCases:
+    """Edge cases for remove_subjects that are currently silently handled."""
+
+    def test_out_of_range_index_raises(self, make_jam):
+        """Removing index 10 from a group with 3 subjects should raise IndexError."""
+        ga = _build_group_analysis(make_jam, n_subjects=3)
+        with pytest.raises(IndexError):
+            ga.remove_subjects(subject_indices=[10], group="healthy")
+
+    def test_nonexistent_id_raises(self, make_jam):
+        """Removing a subject ID that doesn't exist should raise KeyError."""
+        ga = _build_group_analysis(make_jam, n_subjects=3)
+        with pytest.raises(KeyError):
+            ga.remove_subjects(subject_ids=["nonexistent_RIGHT"])
+
+    def test_removal_history_tracked(self, make_jam):
+        """Removals should be logged in removal_history for reproducibility."""
+        ga = _build_group_analysis(make_jam, n_subjects=3)
+        ga.remove_subjects(subject_ids=["subj_1_RIGHT"])
+        ga.remove_subjects(subject_indices=[0], group="healthy")
+
+        assert hasattr(ga, "removal_history")
+        assert len(ga.removal_history) == 2
+        # Each entry should identify what was removed
+        assert ga.removal_history[0]["subject_id"] == "subj_1_RIGHT"
+        assert ga.removal_history[0]["group"] == "healthy"
+
+    def test_removal_history_initialized_empty(self, make_jam):
+        """Fresh GroupJamAnalysis should have empty removal_history."""
+        ga = _make_ga()
+        assert hasattr(ga, "removal_history")
+        assert ga.removal_history == []
+
+
+# =========================================================================
+# Failure mode: extract_values_at_time boundary (Test 8)
+# =========================================================================
+
+
+class TestExtractValuesAtTimeBoundary:
+    """Time point validation for extract_values_at_time."""
+
+    def test_out_of_range_time_point_raises(self, make_jam):
+        """time_point=150 (beyond 0-100 range) should raise ValueError."""
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=101)
+        with pytest.raises(ValueError, match="(range|outside|bound)"):
+            ga.extract_values_at_time(
+                var_type="coordinate", var_name="knee_flex_r", time_point=150.0
+            )
+
+    def test_boundary_time_points_work(self, make_jam):
+        """time_point=0.0 and time_point=100.0 should both return valid data."""
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=101)
+
+        result_0 = ga.extract_values_at_time(
+            var_type="coordinate", var_name="knee_flex_r", time_point=0.0
+        )
+        assert len(result_0["healthy"]["values"]) == 2
+
+        result_100 = ga.extract_values_at_time(
+            var_type="coordinate", var_name="knee_flex_r", time_point=100.0
+        )
+        assert len(result_100["healthy"]["values"]) == 2
+
+
+# =========================================================================
+# Failure mode: filter then access non-existent contact type (Test 9)
+# =========================================================================
+
+
+class TestFilterThenGetData:
+    """Accessing data after filtering with wrong contact type."""
+
+    def test_get_data_after_filtering_wrong_contact_type(self, make_jam):
+        """Filtering for pf_contact when data only has tf_contact should give a KeyError.
+
+        The error message is currently opaque (raw KeyError from nested dict access).
+        A future improvement could add context about available contact types.
+        """
+        # Build GA where data only has tf_contact
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
+
+        # Filter to keep only pf_contact (which doesn't exist in the data)
+        for jam in ga.groups["healthy"]["jam_list"]:
+            contact_data = jam.forceset.get("Smith2018ArticularContactForce", {})
+            # Remove tf_contact, simulating a filter that kept only pf_contact
+            if "tf_contact" in contact_data:
+                del contact_data["tf_contact"]
+
+        # This should raise KeyError (currently a raw KeyError from dict access)
+        with pytest.raises(KeyError):
+            ga.get_regional_contact_data(
+                contact_type="pf_contact", region=4,
+                outcome="regional_max_pressure", axis="pressure",
+                group="healthy", return_individuals=True,
+            )

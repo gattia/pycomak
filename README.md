@@ -1,7 +1,7 @@
 ```bash
 # create environment
-conda create -n pycomak python=3.9
-conda activate pycomak
+conda create -n comak python=3.9
+conda activate comak
 
 pip install -r requirements.txt
 

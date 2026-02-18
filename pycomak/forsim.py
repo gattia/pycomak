@@ -294,7 +294,7 @@ def get_total_ligament_force(jam, ligament_name):
     Raises:
         ValueError: If the ligament is not found in the forceset.
     """
-    fibers = [x for x in jam.forceset['Blankevoort1991Ligament'].keys() if ligament_name in x]
+    fibers = [x for x in jam.forceset['Blankevoort1991Ligament'].keys() if x.startswith(ligament_name)]
     if len(fibers) == 0:
         raise ValueError('Ligament not found in forceset')
     data = np.zeros(jam.forceset['Blankevoort1991Ligament'][fibers[0]]['total_force'].shape[0])

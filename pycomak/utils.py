@@ -73,5 +73,10 @@ def run_with_timeout(func, timeout, *args, **kwargs):
         p.terminate()  # Terminate the process if it exceeds the timeout
         print("Function timed out")
         raise TimeoutError("Function timed out.. it took too long to complete")
+    elif p.exitcode != 0:
+        raise RuntimeError(
+            f"Function failed in subprocess with exit code {p.exitcode}. "
+            f"The function raised an exception during execution."
+        )
     else:
         print("Function completed successfully")

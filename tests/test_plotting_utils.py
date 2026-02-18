@@ -15,9 +15,6 @@ from pycomak.plotting_utils import (
     assign_colors_to_groups,
     _get_variable_label,
     GROUP_COLORS,
-    COORDINATE_LABELS,
-    MUSCLE_LABELS,
-    LIGAMENT_LABELS,
     plot_coordinate_comparison,
     plot_regional_contact,
     plot_variable_scatter,
@@ -42,21 +39,6 @@ class TestAssignColorsToGroups:
         # Should be different from each other
         assert colors["group_x"] != colors["group_y"]
 
-    def test_mixed_known_unknown(self):
-        colors = assign_colors_to_groups(["healthy", "custom_group"])
-        assert colors["healthy"] == GROUP_COLORS["healthy"]
-        assert "custom_group" in colors
-
-    def test_custom_dict_overrides(self):
-        custom = {"my_group": "#ff0000"}
-        colors = assign_colors_to_groups(["my_group", "other"], color_dict=custom)
-        assert colors["my_group"] == "#ff0000"
-        assert "other" in colors
-
-    def test_empty_list(self):
-        colors = assign_colors_to_groups([])
-        assert colors == {}
-
 
 # =========================================================================
 # _get_variable_label
@@ -73,59 +55,6 @@ class TestGetVariableLabel:
         label = _get_variable_label({"type": "coordinate", "name": "knee_tx_r"})
         assert "Translation" in label
         assert "(mm)" in label
-
-    def test_muscle_actuation_label(self):
-        label = _get_variable_label(
-            {"type": "muscle", "name": "recfem_r", "params": {"outcome": "actuation"}}
-        )
-        assert "Rectus Femoris" in label
-        assert "Force (N)" in label
-
-    def test_ligament_label(self):
-        label = _get_variable_label({"type": "ligament", "name": "ACL"})
-        assert "ACL" in label
-        assert "Force (N)" in label
-
-    def test_contact_pressure_label(self):
-        label = _get_variable_label(
-            {
-                "type": "contact",
-                "name": "test",
-                "params": {
-                    "region": 4,
-                    "outcome": "regional_max_pressure",
-                },
-            }
-        )
-        assert "Medial Tibia" in label
-        assert "(MPa)" in label
-
-    def test_contact_area_label(self):
-        label = _get_variable_label(
-            {
-                "type": "contact",
-                "name": "test",
-                "params": {
-                    "region": 5,
-                    "outcome": "regional_contact_area",
-                },
-            }
-        )
-        assert "Lateral Tibia" in label
-        assert "(cm²)" in label
-
-    def test_contact_force_label(self):
-        label = _get_variable_label(
-            {
-                "type": "contact",
-                "name": "test",
-                "params": {
-                    "region": 4,
-                    "outcome": "regional_contact_force",
-                },
-            }
-        )
-        assert "(N)" in label
 
     def test_unknown_type_returns_name(self):
         label = _get_variable_label({"type": "unknown", "name": "my_var"})

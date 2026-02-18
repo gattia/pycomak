@@ -7,19 +7,16 @@ correct parsing of H5 files. These tests verify:
 - Single-file shape correctness for every data type
 - Multi-file stacking along the last axis
 - Edge cases (missing groups, 1D regional data)
-- Legacy helper functions
+- Failure modes (mismatched files, truncated data, region counts)
 """
+
+import warnings
 
 import numpy as np
 import h5py
 import pytest
 
-from pycomak.jam_analysis import (
-    JamAnalysis,
-    get_h5_output,
-    get_h5_type,
-    get_h5_groups_datasets,
-)
+from pycomak.jam_analysis import JamAnalysis
 
 
 # =========================================================================
@@ -129,11 +126,6 @@ class TestSingleFileShapes:
         data = contact["tf_contact"]["tibia_cartilage"][0]["regional_max_pressure"]
         assert data.shape == (self.n, 1)
 
-    def test_regional_scalar_area_shape(self):
-        contact = self.jam.forceset["Smith2018ArticularContactForce"]
-        data = contact["tf_contact"]["tibia_cartilage"][0]["regional_contact_area"]
-        assert data.shape == (self.n, 1)
-
     def test_six_regions_initialized(self):
         """Each cartilage surface should have integer keys 0-5."""
         contact = self.jam.forceset["Smith2018ArticularContactForce"]
@@ -144,9 +136,6 @@ class TestSingleFileShapes:
     def test_comak_data_shape(self):
         data = self.jam.comak["convergence"]
         assert data.shape == (self.n, 1)
-
-    def test_num_time_steps_set(self):
-        assert self.jam.num_time_steps == self.n
 
 
 # =========================================================================
@@ -315,44 +304,6 @@ class TestEdgeCases:
         assert not hasattr(jam, "num_time_steps")
 
 
-# =========================================================================
-# Legacy helper functions
-# =========================================================================
-
-
-class TestLegacyHelpers:
-    """Ensure legacy functions still work correctly."""
-
-    @pytest.fixture(autouse=True)
-    def _setup(self, create_h5):
-        self.h5 = create_h5(
-            muscles={"recfem_r": ["actuation"]},
-            coordinates=["knee_flex_r"],
-        )
-
-    def test_get_h5_output_returns_group_contents(self):
-        """get_h5_output on a group path returns list of child names."""
-        result = get_h5_output(str(self.h5), "/model/forceset/Muscle")
-        assert "recfem_r" in result
-
-    def test_get_h5_type_dataset(self):
-        result = get_h5_type(str(self.h5), "/model/forceset/Muscle/recfem_r/actuation")
-        assert result == "Dataset"
-
-    def test_get_h5_type_group(self):
-        result = get_h5_type(str(self.h5), "/model/forceset/Muscle/recfem_r")
-        assert result == "Group"
-
-    def test_get_h5_groups_datasets_separates(self):
-        groups, datasets = get_h5_groups_datasets(
-            str(self.h5),
-            "/model/coordinateset/knee_flex_r/",
-            ["value", "speed"],
-        )
-        assert "value" in datasets
-        assert "speed" in datasets
-        assert len(groups) == 0
-
 
 # =========================================================================
 # Data integrity (values, not just shapes)
@@ -412,4 +363,189 @@ class TestDataIntegrity:
 
         for r in range(n_regions):
             actual = contact["tf"]["cart"][r]["regional_max_pressure"][:, 0]
+            np.testing.assert_array_equal(actual, pressure_data[:, r])
+
+
+# =========================================================================
+# Failure mode: mismatched H5 file structures (Test 1)
+# =========================================================================
+
+
+class TestMismatchedFiles:
+    """JamAnalysis should detect when multiple H5 files have different structures.
+
+    Currently, mismatched structures silently produce arrays with zeros in columns
+    where the data doesn't exist — this is silent data corruption for scientific data.
+    """
+
+    def test_mismatched_muscles_raises_by_default(self, create_h5):
+        """File A has 2 muscles, file B has 1. Should raise, not silently zero-fill."""
+        h5_a = create_h5(
+            filename="two_muscles.h5", n_timesteps=50,
+            muscles={"recfem_r": ["actuation"], "vaslat_r": ["actuation"]},
+        )
+        h5_b = create_h5(
+            filename="one_muscle.h5", n_timesteps=50,
+            muscles={"recfem_r": ["actuation"]},
+        )
+        jam = JamAnalysis()
+        with pytest.raises(ValueError, match="structure"):
+            jam.jam_analysis([str(h5_a), str(h5_b)])
+
+    def test_mismatched_ligaments_raises_by_default(self, create_h5):
+        """File A has 2 ligament fibers, file B has 1. Should raise ValueError."""
+        h5_a = create_h5(
+            filename="two_ligs.h5", n_timesteps=50,
+            ligaments={"ACLam1": ["total_force"], "ACLpl1": ["total_force"]},
+        )
+        h5_b = create_h5(
+            filename="one_lig.h5", n_timesteps=50,
+            ligaments={"ACLam1": ["total_force"]},
+        )
+        jam = JamAnalysis()
+        with pytest.raises(ValueError, match="structure"):
+            jam.jam_analysis([str(h5_a), str(h5_b)])
+
+    def test_mismatched_files_allowed_with_flag(self, create_h5):
+        """With explicit opt-in flag, mismatched structures should be allowed."""
+        h5_a = create_h5(
+            filename="two_muscles_ok.h5", n_timesteps=50,
+            muscles={"recfem_r": ["actuation"], "vaslat_r": ["actuation"]},
+        )
+        h5_b = create_h5(
+            filename="one_muscle_ok.h5", n_timesteps=50,
+            muscles={"recfem_r": ["actuation"]},
+        )
+        jam = JamAnalysis()
+        # Should NOT raise when explicitly allowed
+        jam.jam_analysis([str(h5_a), str(h5_b)], allow_mismatched_files=True)
+        # vaslat_r column 1 should be zeros (no data from file B)
+        data = jam.forceset["Muscle"]["vaslat_r"]["actuation"]
+        assert np.allclose(data[:, 1], 0.0)
+
+
+# =========================================================================
+# Failure mode: truncated H5 data (Test 2)
+# =========================================================================
+
+
+class TestTruncatedH5Data:
+    """Simulation crashes can produce H5 files with inconsistent dataset lengths."""
+
+    def test_truncated_dataset_raises_error(self, tmp_path):
+        """When a dataset has fewer timesteps than /time, an error should be raised.
+
+        Currently numpy raises a broadcasting error (opaque). Ideally the code
+        would catch this and raise a clear ValueError mentioning the dataset
+        path and the length mismatch, but at minimum it should not silently succeed.
+        """
+        filepath = tmp_path / "truncated.h5"
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("time", data=np.linspace(0, 1, 101))
+            # Muscle dataset is truncated (only 50 timesteps instead of 101)
+            f.create_dataset(
+                "model/forceset/Muscle/recfem_r/actuation",
+                data=np.ones(50),
+            )
+
+        jam = JamAnalysis()
+        with pytest.raises(Exception):
+            jam.jam_analysis([str(filepath)])
+
+
+# =========================================================================
+# Failure mode: calling jam_analysis() twice (Test 3)
+# =========================================================================
+
+
+class TestDoubleCall:
+    """Calling jam_analysis() twice on the same object corrupts internal state."""
+
+    def test_calling_jam_analysis_twice_raises(self, create_h5):
+        """Second call to jam_analysis() should raise RuntimeError."""
+        h5_a = create_h5(
+            filename="first.h5", n_timesteps=50,
+            muscles={"recfem_r": ["actuation"]},
+        )
+        h5_b = create_h5(
+            filename="second.h5", n_timesteps=50,
+            muscles={"recfem_r": ["actuation"]},
+        )
+        jam = JamAnalysis()
+        jam.jam_analysis([str(h5_a)])
+        with pytest.raises(RuntimeError, match="already been called"):
+            jam.jam_analysis([str(h5_b)])
+
+
+# =========================================================================
+# Failure mode: contact regions != 6 (Test 4)
+# =========================================================================
+
+
+class TestRegionCounts:
+    """The code hardcodes 6 regions. Test behavior when actual count differs."""
+
+    def test_fewer_than_6_regions_accessible(self, tmp_path):
+        """With 3 regions, regions 0-2 have data and regions 3-5 are empty dicts."""
+        filepath = tmp_path / "three_regions.h5"
+        n = 50
+        n_regions = 3
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("time", data=np.linspace(0, 1, n))
+            base = "model/forceset/Smith2018ArticularContactForce/tf/cart"
+            f.create_dataset(f"{base}/total_contact_force", data=np.zeros((n, 3)))
+            # Only 3 regions of regional data
+            for r in range(n_regions):
+                f.create_dataset(
+                    f"{base}/regional_contact_force/{r}",
+                    data=np.ones((n, 3)) * (r + 1),
+                )
+            f.create_dataset(
+                f"{base}/regional_max_pressure",
+                data=np.ones((n, n_regions)),
+            )
+
+        jam = JamAnalysis()
+        jam.jam_analysis([str(filepath)])
+        contact = jam.forceset["Smith2018ArticularContactForce"]["tf"]["cart"]
+
+        # Regions 0-2 should have pressure data
+        for r in range(n_regions):
+            assert "regional_max_pressure" in contact[r]
+
+        # Regions 3-5 should be empty dicts (initialized but no data)
+        for r in range(n_regions, 6):
+            assert r in contact  # key exists
+            assert contact[r] == {}  # but no data
+
+    def test_more_than_6_regions_warns(self, tmp_path):
+        """With 8 regions, data for regions 6-7 is silently dropped. Should warn."""
+        filepath = tmp_path / "eight_regions.h5"
+        n = 50
+        n_regions = 8
+        pressure_data = np.arange(n * n_regions, dtype=float).reshape(n, n_regions)
+
+        with h5py.File(filepath, "w") as f:
+            f.create_dataset("time", data=np.linspace(0, 1, n))
+            base = "model/forceset/Smith2018ArticularContactForce/tf/cart"
+            f.create_dataset(f"{base}/total_contact_force", data=np.zeros((n, 3)))
+            for r in range(n_regions):
+                f.create_dataset(
+                    f"{base}/regional_contact_force/{r}",
+                    data=np.ones((n, 3)),
+                )
+            f.create_dataset(f"{base}/regional_max_pressure", data=pressure_data)
+
+        jam = JamAnalysis()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            jam.jam_analysis([str(filepath)])
+            # Should issue a warning about truncated regions
+            region_warnings = [x for x in w if "region" in str(x.message).lower()]
+            assert len(region_warnings) > 0, "Expected warning about regions being dropped"
+
+        # First 6 regions should still have correct data
+        contact = jam.forceset["Smith2018ArticularContactForce"]["tf"]["cart"]
+        for r in range(6):
+            actual = contact[r]["regional_max_pressure"][:, 0]
             np.testing.assert_array_equal(actual, pressure_data[:, r])

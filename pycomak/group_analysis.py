@@ -113,6 +113,7 @@ class GroupJamAnalysis:
         self.comak_subfolder = comak_subfolder
         self.timepoint = timepoint
         self.allow_mismatched_models = allow_mismatched_models
+        self.removal_history = []
         
     def add_subject(
         self, 
@@ -719,8 +720,8 @@ class GroupJamAnalysis:
             
             # Find all fibers for this ligament
             fibers = [
-                x for x in jam_list[0].forceset['Blankevoort1991Ligament'].keys() 
-                if ligament_base_name in x
+                x for x in jam_list[0].forceset['Blankevoort1991Ligament'].keys()
+                if x.startswith(ligament_base_name)
             ]
             
             if len(fibers) == 0:
@@ -880,7 +881,17 @@ class GroupJamAnalysis:
                 continue
             
             # Get data shape
-            outcome_data = jam_list[0].forceset['Smith2018ArticularContactForce'][contact_type][cartilage][region][outcome]
+            try:
+                outcome_data = jam_list[0].forceset['Smith2018ArticularContactForce'][contact_type][cartilage][region][outcome]
+            except KeyError as e:
+                contact_keys = jam_list[0].forceset.get('Smith2018ArticularContactForce', {})
+                available_types = sorted(contact_keys.keys()) if contact_keys else []
+                raise KeyError(
+                    f"Cannot access contact data '{contact_type}/{cartilage}/"
+                    f"region {region}/{outcome}': {e}. "
+                    f"Available contact types: {available_types}. "
+                    f"Check that the data was not filtered out."
+                ) from e
             length = outcome_data.shape[0]
             n_subjects = len(jam_list)
             
@@ -975,44 +986,77 @@ class GroupJamAnalysis:
                     )
         """
         if subject_ids is not None:
+            # Validate that all requested IDs exist somewhere
+            all_ids = set()
+            for group_dict in self.groups.values():
+                for si in group_dict['subjects']:
+                    all_ids.add(f"{si['subject_id']}_{si['side']}")
+            not_found = [sid for sid in subject_ids if sid not in all_ids]
+            if not_found:
+                raise KeyError(
+                    f"Subject IDs not found in any group: {not_found}. "
+                    f"Available IDs: {sorted(all_ids)}"
+                )
+
             # Remove by subject ID across all groups
             for group_name, group_dict in self.groups.items():
                 indices_to_remove = []
-                
+
                 for idx, subject_info in enumerate(group_dict['subjects']):
                     subj_id = f"{subject_info['subject_id']}_{subject_info['side']}"
                     if subj_id in subject_ids:
                         indices_to_remove.append(idx)
                         print(f"Removing {subj_id} from group '{group_name}'")
-                
-                # Remove in reverse order to maintain indices
+
+                # Log and remove in reverse order to maintain indices
                 for idx in sorted(indices_to_remove, reverse=True):
+                    subject_info = group_dict['subjects'][idx]
+                    subj_id = f"{subject_info['subject_id']}_{subject_info['side']}"
+                    self.removal_history.append({
+                        'subject_id': subj_id,
+                        'group': group_name,
+                        'method': 'by_id',
+                        'index_in_group': idx,
+                    })
                     del group_dict['subjects'][idx]
                     del group_dict['subject_ids'][idx]
                     del group_dict['jam_list'][idx]
-        
+
         elif subject_indices is not None:
             # Remove by index within specific group
             if group is None:
                 raise ValueError("Must specify 'group' when using subject_indices")
-            
+
             if group not in self.groups:
                 raise ValueError(f"Group '{group}' not found")
-            
+
             group_dict = self.groups[group]
-            
-            # Remove in reverse order to maintain indices
+            n_subjects = len(group_dict['subjects'])
+
+            # Validate all indices are in range
+            for idx in subject_indices:
+                if idx >= n_subjects or idx < -n_subjects:
+                    raise IndexError(
+                        f"Index {idx} out of range for group '{group}' "
+                        f"which has {n_subjects} subjects"
+                    )
+
+            # Log and remove in reverse order to maintain indices
             for idx in sorted(subject_indices, reverse=True):
-                if idx < len(group_dict['subjects']):
-                    subject_info = group_dict['subjects'][idx]
-                    subj_id = f"{subject_info['subject_id']}_{subject_info['side']}"
-                    print(f"Removing subject {idx} ({subj_id}) from group '{group}'")
-                    
-                    del group_dict['subjects'][idx]
-                    del group_dict['subject_ids'][idx]
-                    del group_dict['jam_list'][idx]
-                else:
-                    print(f"Warning: Index {idx} out of range for group '{group}'")
+                subject_info = group_dict['subjects'][idx]
+                subj_id = f"{subject_info['subject_id']}_{subject_info['side']}"
+                print(f"Removing subject {idx} ({subj_id}) from group '{group}'")
+
+                self.removal_history.append({
+                    'subject_id': subj_id,
+                    'group': group,
+                    'method': 'by_index',
+                    'index_in_group': idx,
+                })
+
+                del group_dict['subjects'][idx]
+                del group_dict['subject_ids'][idx]
+                del group_dict['jam_list'][idx]
         else:
             raise ValueError("Must specify either 'subject_ids' or 'subject_indices'")
         
@@ -1077,12 +1121,20 @@ class GroupJamAnalysis:
             data_dict = {group: data_dict}
         
         results = {}
-        
+
         for group_name, data in data_dict.items():
             # data is shape (n_subjects, n_timesteps)
             n_timesteps = data.shape[1]
             time_array = np.linspace(0, 100, n_timesteps)
-            
+
+            # Validate time_point is within range
+            t_min, t_max = time_array[0], time_array[-1]
+            if time_point < t_min or time_point > t_max:
+                raise ValueError(
+                    f"time_point {time_point} is outside the valid range "
+                    f"[{t_min}, {t_max}]"
+                )
+
             # Find the timepoint index/indices
             if time_window is None:
                 # Extract single timepoint
@@ -1214,8 +1266,9 @@ class GroupJamAnalysis:
                 print(f"  Group mean ± std: {group_mean:.2f} ± {group_std:.2f}")
                 print(f"  Outlier threshold: >{threshold_std} std from mean")
                 for idx, subj_id in zip(outlier_indices, outlier_ids):
+                    z_score = (mean_values[idx] - group_mean) / group_std if group_std > 0 else float('inf')
                     print(f"    - {subj_id}: value={mean_values[idx]:.2f} "
-                          f"(z-score={(mean_values[idx]-group_mean)/group_std:.2f})")
+                          f"(z-score={z_score:.2f})")
             else:
                 print(f"\n{group_name} group: No outliers detected")
         

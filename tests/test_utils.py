@@ -29,6 +29,11 @@ def _func_with_args(a, b, key=None):
     return a + b  # return value not used since it runs in a subprocess
 
 
+def _crashing_func():
+    """A function that raises an exception."""
+    raise ValueError("model broke")
+
+
 class TestRunWithTimeout:
     def test_fast_function_completes(self):
         """Fast function completes without raising."""
@@ -44,6 +49,15 @@ class TestRunWithTimeout:
         """Args and kwargs are forwarded to the function."""
         # This should not raise even though the function uses args
         run_with_timeout(_func_with_args, timeout=5, a=1, b=2, key="test")
+
+    def test_function_exception_detected(self):
+        """If the function raises, run_with_timeout should raise RuntimeError.
+
+        Currently p.is_alive() is False after the crash, so the code prints
+        'Function completed successfully' even though p.exitcode != 0.
+        """
+        with pytest.raises(RuntimeError):
+            run_with_timeout(_crashing_func, timeout=5)
 
 
 # =========================================================================
