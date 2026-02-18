@@ -186,12 +186,17 @@ class KneeOptimizer:
                 comak_ik.update_multiple_ligament_reference_strains(self.dict_reference_strain_update)
             
             try:
-                # Set timer for settle sim to 5 minutes
+                # Set timer for settle sim to 10 minutes
                 run_with_timeout(comak_ik.perform_settle_sim, 60*10)
             except TimeoutError:
                 update_patella_location_(self.path_model_to_update, self.path_model_to_update, self.patella_position_update)
                 self._n_updates += 1
                 self._list_eval_results.append('settle_sim_timeout')
+                continue
+            except RuntimeError:
+                update_patella_location_(self.path_model_to_update, self.path_model_to_update, self.patella_position_update)
+                self._n_updates += 1
+                self._list_eval_results.append('settle_sim_crash')
                 continue
 
             print('=' * 72)

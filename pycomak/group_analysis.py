@@ -11,6 +11,7 @@ of the JamAnalysis class to enable:
 """
 
 import os
+import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -545,8 +546,37 @@ class GroupJamAnalysis:
                         group_dict['secondary_constraints'][key]['Y'][subject_idx, :] = \
                             np.rad2deg(constraint_funcs[key]['Y'])
     
+    @staticmethod
+    def _extract_subject_value(jam, accessor, i, subject_id, group_name):
+        """
+        Extract a 1D timeseries from a single JAM object, re-raising KeyError with context.
+
+        We intentionally raise on KeyError rather than silently skipping.
+        Silent skipping caused the returned data array to have fewer rows than
+        subject_ids, which corrupted subject-to-data mapping in downstream methods
+        (extract_values_at_time, identify_outlier_subjects). If a subject is missing
+        data, fix it upstream or remove it explicitly with remove_subjects().
+        """
+        try:
+            return accessor(jam)
+        except KeyError as e:
+            raise KeyError(
+                f"Subject '{subject_id}' (index {i}) in group '{group_name}': {e}"
+            ) from e
+
+    @staticmethod
+    def _check_nan(data, subject_ids, group_name):
+        """Raise ValueError if any subjects have NaN or Inf values."""
+        bad_mask = np.isnan(data).any(axis=1) | np.isinf(data).any(axis=1)
+        if bad_mask.any():
+            bad = [subject_ids[i] for i in np.where(bad_mask)[0]]
+            raise ValueError(
+                f"NaN/Inf in group '{group_name}' subjects: {bad}. "
+                f"Fix upstream or remove with remove_subjects()."
+            )
+
     def get_coordinate_data(
-        self, 
+        self,
         coordinate_name: str, 
         group: Optional[str] = None,
         return_individuals: bool = True
@@ -581,25 +611,16 @@ class GroupJamAnalysis:
             n_subjects = len(jam_list)
             
             # Extract data
-            # NOTE: We intentionally raise on KeyError rather than silently skipping.
-            # Silent skipping caused the returned data array to have fewer rows than
-            # subject_ids, which corrupted subject-to-data mapping in downstream methods
-            # (extract_values_at_time, identify_outlier_subjects). If a subject is missing
-            # data, fix it upstream or remove it explicitly with remove_subjects().
-            # Common cause of KeyError: typo in coordinate_name.
             data = np.zeros((n_subjects, length))
+            accessor = lambda jam: jam.coordinateset[coordinate_name]['value'][:, 0]
 
             for i, jam in enumerate(jam_list):
-                try:
-                    data[i, :] = jam.coordinateset[coordinate_name]['value'][:, 0]
-                except KeyError as e:
-                    subject_id = group_dict['subject_ids'][i]
-                    raise KeyError(
-                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
-                        f"is missing coordinate '{coordinate_name}': {e}. "
-                        f"Fix the data upstream or remove this subject with remove_subjects()."
-                    ) from e
-            
+                data[i, :] = self._extract_subject_value(
+                    jam, accessor, i, group_dict['subject_ids'][i], group_name
+                )
+
+            self._check_nan(data, group_dict['subject_ids'], group_name)
+
             if return_individuals:
                 results[group_name] = data
             else:
@@ -611,11 +632,11 @@ class GroupJamAnalysis:
                     'time': time,
                     'n': data.shape[0]
                 }
-        
+
         if group is not None:
             return results[group]
         return results
-    
+
     def get_muscle_data(
         self, 
         muscle_name: str,
@@ -653,20 +674,17 @@ class GroupJamAnalysis:
             length = jam_list[0].forceset['Muscle'][muscle_name][outcome].shape[0]
             n_subjects = len(jam_list)
             
-            # Extract data (see get_coordinate_data for rationale on raising KeyError)
+            # Extract data
             data = np.zeros((n_subjects, length))
+            accessor = lambda jam: jam.forceset['Muscle'][muscle_name][outcome][:, 0]
 
             for i, jam in enumerate(jam_list):
-                try:
-                    data[i, :] = jam.forceset['Muscle'][muscle_name][outcome][:, 0]
-                except KeyError as e:
-                    subject_id = group_dict['subject_ids'][i]
-                    raise KeyError(
-                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
-                        f"is missing muscle '{muscle_name}' outcome '{outcome}': {e}. "
-                        f"Fix the data upstream or remove this subject with remove_subjects()."
-                    ) from e
-            
+                data[i, :] = self._extract_subject_value(
+                    jam, accessor, i, group_dict['subject_ids'][i], group_name
+                )
+
+            self._check_nan(data, group_dict['subject_ids'], group_name)
+
             if return_individuals:
                 results[group_name] = data
             else:
@@ -675,16 +693,14 @@ class GroupJamAnalysis:
                     'mean': np.mean(data, axis=0),
                     'std': np.std(data, axis=0),
                     'ste': np.std(data, axis=0) / np.sqrt(data.shape[0]),
-                    'min': np.min(data, axis=0),
-                    'max': np.max(data, axis=0),
                     'time': time,
                     'n': data.shape[0]
                 }
-        
+
         if group is not None:
             return results[group]
         return results
-    
+
     def get_ligament_data(
         self,
         ligament_base_name: str,
@@ -732,21 +748,22 @@ class GroupJamAnalysis:
             length = jam_list[0].forceset['Blankevoort1991Ligament'][fibers[0]][outcome].shape[0]
             n_subjects = len(jam_list)
             
-            # Extract and sum across fibers (see get_coordinate_data for rationale on raising KeyError)
+            # Extract and sum across fibers
             data = np.zeros((n_subjects, length))
 
+            def ligament_accessor(jam):
+                total = np.zeros(length)
+                for fiber in fibers:
+                    total += jam.forceset['Blankevoort1991Ligament'][fiber][outcome][:, 0]
+                return total
+
             for i, jam in enumerate(jam_list):
-                try:
-                    for fiber in fibers:
-                        data[i, :] += jam.forceset['Blankevoort1991Ligament'][fiber][outcome][:, 0]
-                except KeyError as e:
-                    subject_id = group_dict['subject_ids'][i]
-                    raise KeyError(
-                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
-                        f"is missing ligament fiber '{fiber}' outcome '{outcome}': {e}. "
-                        f"Fix the data upstream or remove this subject with remove_subjects()."
-                    ) from e
-            
+                data[i, :] = self._extract_subject_value(
+                    jam, ligament_accessor, i, group_dict['subject_ids'][i], group_name
+                )
+
+            self._check_nan(data, group_dict['subject_ids'], group_name)
+
             if return_individuals:
                 results[group_name] = data
             else:
@@ -805,25 +822,23 @@ class GroupJamAnalysis:
             length = outcome_data.shape[0]
             n_subjects = len(jam_list)
             
-            # Extract data (see get_coordinate_data for rationale on raising KeyError)
+            # Extract data
             data = np.zeros((n_subjects, length))
 
-            for i, jam in enumerate(jam_list):
-                try:
-                    outcome_data = jam.forceset['Smith2018ArticularContactForce'][contact_type][cartilage][outcome]
+            def contact_accessor(jam):
+                d = jam.forceset['Smith2018ArticularContactForce'][contact_type][cartilage][outcome]
+                if isinstance(axis, int):
+                    return np.squeeze(d[:, axis])
+                elif axis == 'norm':
+                    return np.squeeze(np.linalg.norm(d, axis=1))
 
-                    if isinstance(axis, int):
-                        data[i, :] = np.squeeze(outcome_data[:, axis])
-                    elif axis == 'norm':
-                        data[i, :] = np.squeeze(np.linalg.norm(outcome_data, axis=1))
-                except KeyError as e:
-                    subject_id = group_dict['subject_ids'][i]
-                    raise KeyError(
-                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
-                        f"is missing contact data '{contact_type}/{cartilage}/{outcome}': {e}. "
-                        f"Fix the data upstream or remove this subject with remove_subjects()."
-                    ) from e
-            
+            for i, jam in enumerate(jam_list):
+                data[i, :] = self._extract_subject_value(
+                    jam, contact_accessor, i, group_dict['subject_ids'][i], group_name
+                )
+
+            self._check_nan(data, group_dict['subject_ids'], group_name)
+
             if return_individuals:
                 results[group_name] = data
             else:
@@ -895,30 +910,24 @@ class GroupJamAnalysis:
             length = outcome_data.shape[0]
             n_subjects = len(jam_list)
             
-            # Extract data (see get_coordinate_data for rationale on raising KeyError)
+            # Extract data
             data = np.zeros((n_subjects, length))
 
+            def regional_accessor(jam):
+                d = jam.forceset['Smith2018ArticularContactForce'][contact_type][cartilage][region][outcome]
+                if isinstance(axis, int):
+                    d = d[:, axis]
+                elif axis == 'norm':
+                    d = np.linalg.norm(d, axis=1)
+                return np.squeeze(d)
+
             for i, jam in enumerate(jam_list):
-                try:
-                    data_ = jam.forceset['Smith2018ArticularContactForce'][contact_type][cartilage][region][outcome]
+                data[i, :] = self._extract_subject_value(
+                    jam, regional_accessor, i, group_dict['subject_ids'][i], group_name
+                )
 
-                    if isinstance(axis, int):
-                        data_ = data_[:, axis]
-                    elif axis == 'norm':
-                        data_ = np.linalg.norm(data_, axis=1)
-                    elif axis in ['pressure', 'area']:
-                        data_ = data_
+            self._check_nan(data, group_dict['subject_ids'], group_name)
 
-                    data[i, :] = np.squeeze(data_)
-                except KeyError as e:
-                    subject_id = group_dict['subject_ids'][i]
-                    raise KeyError(
-                        f"Subject '{subject_id}' (index {i}) in group '{group_name}' "
-                        f"is missing regional contact data "
-                        f"'{contact_type}/{cartilage}/region {region}/{outcome}': {e}. "
-                        f"Fix the data upstream or remove this subject with remove_subjects()."
-                    ) from e
-            
             if return_individuals:
                 results[group_name] = data
             else:
@@ -1273,44 +1282,4 @@ class GroupJamAnalysis:
                 print(f"\n{group_name} group: No outliers detected")
         
         return results
-    
-    # ==================================================================================
-    # NOTE FOR FUTURE DEVELOPMENT: Cross-Variable Analysis
-    # ==================================================================================
-    # TODO: Add functionality for analyzing relationships between variables
-    # 
-    # Potential features:
-    # 1. Correlation analysis between muscle forces and contact mechanics
-    #    - e.g., correlate vastus lateralis force with lateral contact pressure
-    #    - time-series correlation or peak value correlation
-    # 
-    # 2. Regression models predicting contact mechanics from kinematics/kinetics
-    #    - e.g., predict regional pressure from knee adduction angle and moment
-    #    - could use linear regression, PLS, or ML approaches
-    # 
-    # 3. Statistical parametric mapping (SPM) for time-series comparisons
-    #    - identify time regions where groups differ significantly
-    #    - account for temporal correlation in the data
-    # 
-    # 4. Principal component analysis (PCA) or clustering
-    #    - identify patterns across multiple variables
-    #    - group subjects by movement/loading patterns
-    # 
-    # Example API:
-    # ```python
-    # # Correlate muscle force with contact pressure
-    # corr_results = group_analysis.correlate_variables(
-    #     var1_type='muscle', var1_name='vaslat_r', var1_outcome='actuation',
-    #     var2_type='contact', var2_region=5, var2_outcome='regional_max_pressure',
-    #     method='pearson'  # or 'spearman', 'time_series'
-    # )
-    # 
-    # # Predict contact mechanics from kinematics
-    # model = group_analysis.predict_contact_from_kinematics(
-    #     predictors=['knee_add_r', 'knee_rot_r', 'knee_flex_r'],
-    #     target_region=4, target_outcome='regional_max_pressure',
-    #     model_type='linear'  # or 'ridge', 'pls', 'random_forest'
-    # )
-    # ```
-    # ==================================================================================
 

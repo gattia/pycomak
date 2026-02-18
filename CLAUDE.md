@@ -512,7 +512,25 @@ Logs are written to `results_dir/logs/`. Check these for simulation errors.
 ## Branch Notes
 
 - **main**: Stable baseline
-- **menisci**: Active development with meniscus kinematics support, breaking API changes from main (see commit history for details)
+- **menisci**: Active development with meniscus kinematics support, breaking API changes from main
+
+### Breaking changes on `menisci` (Feb 2026 test suite + refactor)
+
+These changes make errors explicit that were previously silent. Pipeline scripts that worked
+before may now raise errors — this is intentional (the old behavior produced wrong results).
+
+| Change | Old behavior | New behavior | Fix if it breaks |
+|--------|-------------|-------------|-----------------|
+| `get_*_data()` NaN/Inf detection | Silent propagation into stats | `ValueError` listing affected subjects | `remove_subjects()` the bad subjects |
+| `get_*_data()` missing data | Silent skip (corrupted subject labels) | `KeyError` with subject details | Fix data upstream or `remove_subjects()` |
+| `get_muscle_data()` stats keys | Dict included `'min'` and `'max'` | Only `'mean'`, `'std'`, `'ste'`, `'time'`, `'n'` | Remove `data['min']`/`data['max']` usage |
+| `jam_analysis()` mismatched files | Silent zero-fill for missing data | `ValueError` on structure mismatch | Pass `allow_mismatched_files=True` |
+| `jam_analysis()` double call | Silent state corruption | `RuntimeError` | Create new `JamAnalysis()` instance |
+| `remove_subjects()` bad input | Silent no-op | `KeyError`/`IndexError` | Fix the ID or index |
+| `extract_values_at_time()` range | Silent clamp to nearest index | `ValueError` for out-of-range | Use time_point in [0, 100] |
+| `run_with_timeout()` crash | Printed "completed successfully" | `RuntimeError` (caught in forsim/optimizer) | Already handled |
+| Ligament fiber matching | Substring (`in`) | Prefix (`startswith`) | Only breaks if using bare `"PFL"` |
+| `KneeOptimizer` crash handling | Uncaught `RuntimeError` killed pipeline | Returns `'settle_sim_crash'` string | `isinstance(result, str)` already catches it |
 
 
 # Plans

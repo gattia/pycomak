@@ -580,6 +580,9 @@ class COMAKforsim:
         except TimeoutError:
             print('Forsim Tool timed out... took longer than allowed time')
             return False
+        except RuntimeError as e:
+            print(f'Forsim Tool crashed: {e}')
+            return False
     
     def run_joint_mechanics_tool(self):
         """

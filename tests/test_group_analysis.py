@@ -227,8 +227,10 @@ class TestGetMuscleData:
         ga = _build_group_analysis(make_jam, n_subjects=3)
         data = ga.get_muscle_data("recfem_r", group="healthy", return_individuals=False)
         assert "mean" in data
-        assert "min" in data
-        assert "max" in data
+        assert "std" in data
+        assert "ste" in data
+        assert "time" in data
+        assert "n" in data
 
 
 class TestGetLigamentData:
@@ -281,6 +283,39 @@ class TestGetRegionalContactData:
         # Subject 0: regional_force = ones * 0.5 → norm = sqrt(3)*0.5
         expected = np.sqrt(3) * 0.5
         np.testing.assert_array_almost_equal(data[0, :], expected)
+
+
+class TestNaNDetection:
+    """get_*_data methods should raise ValueError when data contains NaN or Inf."""
+
+    def _build_ga_with_nan_coordinate(self, make_jam, n=20):
+        """Build GA where subject 1 has NaN in knee_flex_r."""
+        ga = _build_group_analysis(make_jam, n_subjects=3, n_timesteps=n)
+        # Inject NaN into subject 1's coordinate data
+        ga.groups["healthy"]["jam_list"][1].coordinateset["knee_flex_r"]["value"][5, 0] = np.nan
+        return ga
+
+    def test_coordinate_nan_raises(self, make_jam):
+        ga = self._build_ga_with_nan_coordinate(make_jam)
+        with pytest.raises(ValueError, match="NaN/Inf.*subj_1_RIGHT"):
+            ga.get_coordinate_data("knee_flex_r", group="healthy")
+
+    def test_muscle_nan_raises(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
+        ga.groups["healthy"]["jam_list"][0].forceset["Muscle"]["recfem_r"]["actuation"][0, 0] = np.nan
+        with pytest.raises(ValueError, match="NaN/Inf.*subj_0_RIGHT"):
+            ga.get_muscle_data("recfem_r", group="healthy")
+
+    def test_inf_also_caught(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
+        ga.groups["healthy"]["jam_list"][1].coordinateset["knee_flex_r"]["value"][0, 0] = np.inf
+        with pytest.raises(ValueError, match="NaN/Inf.*subj_1_RIGHT"):
+            ga.get_coordinate_data("knee_flex_r", group="healthy")
+
+    def test_clean_data_no_error(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=3, n_timesteps=20)
+        # Should not raise
+        ga.get_coordinate_data("knee_flex_r", group="healthy")
 
 
 # =========================================================================
@@ -820,3 +855,88 @@ class TestFilterThenGetData:
         # Subject 0: 200, Subject 1: 400
         np.testing.assert_array_almost_equal(data5[0, :], 200.0)
         np.testing.assert_array_almost_equal(data5[1, :], 400.0)
+
+
+# =========================================================================
+# add_subject (integration test with real H5 files)
+# =========================================================================
+
+
+class TestAddSubject:
+    """Tests for add_subject() using create_h5 to produce real H5 files."""
+
+    def _make_h5(self, create_h5, **kwargs):
+        """Create a standard H5 file with muscles, ligaments, coordinates, and contacts."""
+        defaults = dict(
+            n_timesteps=50,
+            muscles={"recfem_r": ["actuation"]},
+            ligaments={"ACLam1": ["total_force"]},
+            coordinates=["knee_flex_r"],
+            contacts={"tf_contact": {"tibia_cartilage": 6}},
+        )
+        defaults.update(kwargs)
+        return create_h5(**defaults)
+
+    def test_add_subject_with_h5_path(self, create_h5, tmp_path):
+        h5_path = self._make_h5(create_h5)
+        ga = GroupJamAnalysis(str(tmp_path), timepoint="")
+        result = ga.add_subject("s0", "RIGHT", "d0", group="test", h5_file_path=str(h5_path))
+
+        assert result is True
+        assert len(ga.groups["test"]["subjects"]) == 1
+        assert ga.groups["test"]["subject_ids"] == ["s0_RIGHT"]
+        assert len(ga.groups["test"]["jam_list"]) == 1
+        # Verify JAM was actually loaded
+        jam = ga.groups["test"]["jam_list"][0]
+        assert "knee_flex_r" in jam.coordinateset
+
+    def test_add_subject_missing_h5_returns_false(self, tmp_path):
+        ga = GroupJamAnalysis(str(tmp_path), timepoint="")
+        result = ga.add_subject(
+            "s0", "RIGHT", "d0", group="test",
+            h5_file_path="/nonexistent/file.h5",
+        )
+        assert result is False
+        # Group should not have been created or should be empty
+        assert "test" not in ga.groups or len(ga.groups["test"]["jam_list"]) == 0
+
+    def test_add_subject_filter_data(self, create_h5, tmp_path):
+        # Create H5 with both tf_contact and pf_contact
+        h5_path = create_h5(
+            n_timesteps=50,
+            muscles={"recfem_r": ["actuation", "activation"]},
+            coordinates=["knee_flex_r"],
+            contacts={
+                "tf_contact": {"tibia_cartilage": 6},
+                "pf_contact": {"patella_cartilage": 6},
+            },
+        )
+        ga = GroupJamAnalysis(str(tmp_path), timepoint="")
+        ga.add_subject(
+            "s0", "RIGHT", "d0", group="test",
+            h5_file_path=str(h5_path),
+            filter_data=True,
+            contact_types=["tf_contact"],
+            muscle_outcomes=["actuation"],
+        )
+
+        jam = ga.groups["test"]["jam_list"][0]
+        contacts = jam.forceset["Smith2018ArticularContactForce"]
+        # tf_contact should remain, pf_contact should be filtered out
+        assert "tf_contact" in contacts
+        assert "pf_contact" not in contacts
+        # Only 'actuation' muscle outcome should remain
+        assert "actuation" in jam.forceset["Muscle"]["recfem_r"]
+        assert "activation" not in jam.forceset["Muscle"]["recfem_r"]
+
+    def test_add_two_subjects_same_group(self, create_h5, tmp_path):
+        h5_a = self._make_h5(create_h5, filename="a.h5")
+        h5_b = self._make_h5(create_h5, filename="b.h5")
+        ga = GroupJamAnalysis(str(tmp_path), timepoint="")
+
+        ga.add_subject("s0", "RIGHT", "d0", group="test", h5_file_path=str(h5_a))
+        ga.add_subject("s1", "LEFT", "d1", group="test", h5_file_path=str(h5_b))
+
+        assert len(ga.groups["test"]["subjects"]) == 2
+        assert len(ga.groups["test"]["jam_list"]) == 2
+        assert ga.groups["test"]["subject_ids"] == ["s0_RIGHT", "s1_LEFT"]
