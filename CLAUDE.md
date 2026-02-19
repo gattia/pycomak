@@ -35,7 +35,7 @@ Configured in `pyproject.toml`:
 - **black**: line-length 100
 - **isort**: profile "black", line-length 100
 
-No automated test suite exists yet.
+Run tests with: `pytest` (171 tests, all pure-Python logic — no OpenSim dependency required).
 
 ## Architecture
 
@@ -371,7 +371,7 @@ run_with_timeout(comaktool.run, 60*180)               # 3 hr
 
 ### Return Values on Failure
 `KneeOptimizer.optimize_patella_location()` returns `None` on success, or error strings:
-`'settle_sim_timeout'`, `'forsim_timeout'`, `'patella_opt_max_updates'`
+`'settle_sim_timeout'`, `'settle_sim_crash'`, `'forsim_timeout'`, `'forsim_crash'`, `'patella_opt_max_updates'`
 
 ### Updating Ligament Reference Strains
 ```python
@@ -532,6 +532,33 @@ before may now raise errors — this is intentional (the old behavior produced w
 | Ligament fiber matching | Substring (`in`) | Prefix (`startswith`) | Only breaks if using bare `"PFL"` |
 | `KneeOptimizer` crash handling | Uncaught `RuntimeError` killed pipeline | Returns `'settle_sim_crash'` string | `isinstance(result, str)` already catches it |
 
+
+## Testing
+
+171 tests covering all pure-Python logic. Tests use synthetic H5 fixtures (no real data or OpenSim required).
+
+**Test files:**
+- `test_jam_analysis.py` — H5 parsing, file validation, double-call guard, structure mismatch detection
+- `test_group_analysis.py` — Multi-subject stats, NaN/Inf detection, subject removal, outlier detection, `add_subject` validation
+- `test_forsim_criteria.py` — Criteria evaluation, ligament prefix matching, dict mutation safety
+- `test_plotting_utils.py` — Plotting smoke tests (figure creation, labels, units)
+- `test_cleanup.py`, `test_utils.py`, `test_defaults.py`, `test_comak_ik.py`
+
+**Not tested (by design — requires OpenSim bindings):**
+- Simulation workflow classes: `COMAKInverseKinematics`, `COMAK`, `COMAKInverseDynamics`, `JointMechanics`, `KneeOptimizer`, `COMAKforsim`
+- `dict_converter.py` (OpenSim model manipulation)
+
+## Known Limitations & Deferred Items
+
+**Low-risk items explicitly deferred:**
+- `add_subjects_from_list()` does not forward `filter_data` params to `add_subject()` — convenience method, rarely used directly
+- `jam_evaluation()` plotting crashes if criteria dict produces 0 plot items — pathological edge case
+- `_process_frametransformsset_fast()` is dead code behind `raise NotImplementedError` — placeholder for future use
+
+**Behavioral notes to watch:**
+- `get_*_data()` raises `KeyError` if any subject is missing requested data (strict by design). If users have heterogeneous model outputs across subjects, they must `remove_subjects()` first
+- Ligament matching uses `startswith` — bare `"PFL"` will NOT match `lPFL`/`mPFL` variants. Use specific prefixes (`"lPFL"`, `"mPFL"`) or separate calls
+- `get_muscle_data()` no longer returns `'min'`/`'max'` keys in stats dict (removed for consistency with other `get_*_data` methods)
 
 # Plans
 We write all plans in: 
