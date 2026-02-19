@@ -630,9 +630,12 @@ class JamAnalysis:
             self.base_name = base_name
 
         if type(h5_file_list) not in (list, tuple):
-            raise Exception(f'`h5_file_list` is type: {type(h5_file_list)} and should be type `list` or `tuple`')
-        else:
-            self.h5_file_list = h5_file_list
+            raise TypeError(f'`h5_file_list` is type: {type(h5_file_list)} and should be type `list` or `tuple`')
+
+        if len(h5_file_list) == 0:
+            raise ValueError("h5_file_list is empty")
+
+        self.h5_file_list = h5_file_list
 
         self.num_files = len(h5_file_list)
 
@@ -663,7 +666,7 @@ class JamAnalysis:
             filename = os.path.basename(h5_filepath)
 
             if not filename.endswith('.h5'):
-                raise Exception(f'File: {filename} is not `.h5` format!')
+                raise ValueError(f'File: {filename} is not `.h5` format!')
 
             # OPTIMIZED: Open file ONCE and process everything
             with h5py.File(h5_filepath, "r") as f:
@@ -697,8 +700,8 @@ class JamAnalysis:
                                 f"pass allow_mismatched_files=True to jam_analysis()."
                             )
 
-                # Get time information from first file
-                if h5_file_idx == 0:
+                # Get time information from the first successfully opened file
+                if not hasattr(self, 'num_time_steps'):
                     self.time = np.array(f['/time'])
                     self.num_time_steps = len(self.time)
 

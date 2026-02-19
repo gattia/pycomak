@@ -217,7 +217,7 @@ class KneeOptimizer:
                 # Update model to move patella down 1mm & continue...
                 update_patella_location_(self.path_model_to_update, self.path_model_to_update, self.patella_position_update)
                 self._n_updates += 1
-                self._list_eval_results.append('forsim_timeout')
+                self._list_eval_results.append(comak_forsim.failure_reason)
                 continue
 
             # Evaluate simulation

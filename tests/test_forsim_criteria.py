@@ -264,6 +264,39 @@ class TestAnalyzeCriteria:
         # ptp_ should be overwritten to 2000, not accumulated
         assert criteria["ligaments"]["PT"]["ptp_"] == pytest.approx(2000.0)
 
+    def test_nan_data_fails_criteria(self, make_jam):
+        """NaN in ligament data should cause criteria to fail."""
+        jam = self._make_jam_for_criteria(
+            make_jam,
+            lig_forces={"PT1": np.array([10.0, np.nan, 10.0])},
+        )
+        criteria = {"ligaments": {"PT": {"max_range": 1100}}}
+        criteria, passed = analyze_criteria(jam, criteria, "ligaments")
+        assert passed is False
+
+    def test_nan_coord_data_fails_criteria(self, make_jam):
+        """NaN in coordinate data should cause criteria to fail."""
+        jam = self._make_jam_for_criteria(
+            make_jam,
+            coord_values={"pf_tx_r": np.array([0.001, np.nan, 0.001])},
+        )
+        criteria = {"coords": {"pf_tx_r": {"max_range": 0.005}}}
+        criteria, passed = analyze_criteria(jam, criteria, "coords")
+        assert passed is False
+
+    def test_criteria_dict_not_mutated(self, make_jam):
+        """analyze_criteria should not mutate the input criteria dict."""
+        import copy
+        jam = self._make_jam_for_criteria(
+            make_jam,
+            lig_forces={"PT1": np.array([5.0, 15.0])},
+        )
+        criteria = {"ligaments": {"PT": {"max_range": 1100, "max": 1100}}}
+        original = copy.deepcopy(criteria)
+        analyze_criteria(jam, criteria, "ligaments")
+        # Original dict should be unchanged (no ptp_/min_/max_ keys added)
+        assert criteria == original
+
     def test_multi_file_jam_raises(self, make_jam):
         """analyze_criteria rejects multi-file JamAnalysis objects."""
         jam = self._make_jam_for_criteria(

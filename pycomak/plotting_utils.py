@@ -176,15 +176,19 @@ def plot_coordinate_comparison(
     # Plot each group
     for group_name, data in group_data.items():
         color = colors[group_name]
-        
+
         mean = data['mean'].copy()
         time = data['time']
-        
-        # Convert units if needed (data is in meters, convert to mm if requested)
+
+        # Convert units: H5 stores radians for rotations, meters for translations
         if is_translation and translation_units == 'mm':
             mean = mean * 1000
             std_data = data.get('std', np.zeros_like(mean)) * 1000
             ste_data = data.get('ste', np.zeros_like(mean)) * 1000
+        elif not is_translation:
+            mean = np.rad2deg(mean)
+            std_data = np.rad2deg(data.get('std', np.zeros_like(mean)))
+            ste_data = np.rad2deg(data.get('ste', np.zeros_like(mean)))
         else:
             std_data = data.get('std', np.zeros_like(mean))
             ste_data = data.get('ste', np.zeros_like(mean))
@@ -270,20 +274,22 @@ def plot_coordinate_individuals(
     for group_name, data in group_data.items():
         color = colors[group_name]
         time = np.linspace(0, 100, data.shape[1])
-        
-        # Convert units if needed (data is in meters, convert to mm if requested)
+
+        # Convert units: H5 stores radians for rotations, meters for translations
         plot_data = data.copy()
         if is_translation and translation_units == 'mm':
             plot_data = plot_data * 1000
-        
+        elif not is_translation:
+            plot_data = np.rad2deg(plot_data)
+
         for i in range(plot_data.shape[0]):
             label = group_name.capitalize() if i == 0 else None
             ax.plot(time, plot_data[i, :], color=color, alpha=alpha, label=label)
-    
+
     # Labels and formatting
     if title is None:
         title = COORDINATE_LABELS.get(coordinate_name, coordinate_name)
-    
+
     ax.set_title(title, fontsize=fontsize + 5)
     ax.set_xlabel(xlabel, fontsize=fontsize)
     ax.set_ylabel(ylabel, fontsize=fontsize)
@@ -291,10 +297,10 @@ def plot_coordinate_individuals(
     ax.grid(True, alpha=0.3, which='both', linestyle='--')
     ax.minorticks_on()
     ax.grid(True, alpha=0.15, which='minor', linestyle=':')
-    
+
     if legend:
         ax.legend(fontsize=fontsize - 2)
-    
+
     return ax
 
 
@@ -357,7 +363,8 @@ def plot_muscle_comparison(
     group_data: Dict[str, Dict],
     muscle_name: str,
     ax: Optional[plt.Axes] = None,
-    show_range: bool = True,
+    show_ste: bool = True,
+    show_std: bool = False,
     title: Optional[str] = None,
     xlabel: str = '% Stance',
     ylabel: str = 'Force (N)',
@@ -367,19 +374,20 @@ def plot_muscle_comparison(
 ) -> plt.Axes:
     """
     Plot muscle force comparison across groups.
-    
+
     Args:
-        group_data: Dict of group names to data dicts (with 'mean', 'min', 'max', 'time')
+        group_data: Dict of group names to data dicts (with 'mean', 'std', 'ste', 'time')
         muscle_name: Name of muscle
         ax: Matplotlib axes object (creates new if None)
-        show_range: Whether to show min-max range
+        show_ste: Whether to show standard error band (default: True)
+        show_std: Whether to show standard deviation band (overridden by show_ste)
         title: Plot title (auto-generated if None)
         xlabel: X-axis label
         ylabel: Y-axis label
         fontsize: Font size
         colors: Dict mapping group names to colors
         legend: Whether to show legend
-        
+
     Returns:
         Matplotlib axes object
     """
@@ -402,23 +410,25 @@ def plot_muscle_comparison(
         time = data['time']
         
         ax.plot(time, mean, label=group_name.capitalize(), color=color, linewidth=2)
-        
-        if show_range and 'min' in data and 'max' in data:
-            ax.fill_between(time, data['min'], data['max'], alpha=0.2, color=color)
-    
+
+        if show_ste and 'ste' in data:
+            ax.fill_between(time, mean - data['ste'], mean + data['ste'], alpha=0.3, color=color)
+        elif show_std and 'std' in data:
+            ax.fill_between(time, mean - data['std'], mean + data['std'], alpha=0.2, color=color)
+
     # Labels and formatting
     if title is None:
         title = MUSCLE_LABELS.get(muscle_name, muscle_name)
-    
+
     ax.set_title(title, fontsize=fontsize + 5)
     ax.set_xlabel(xlabel, fontsize=fontsize)
     ax.set_ylabel(ylabel, fontsize=fontsize)
     ax.tick_params(labelsize=fontsize - 2)
     ax.grid(True, alpha=0.3)
-    
+
     if legend:
         ax.legend(fontsize=fontsize - 2)
-    
+
     return ax
 
 
@@ -840,15 +850,9 @@ def plot_regional_contact(
                 ste = data['ste']
         
         ax.plot(time, mean, label=group_name.capitalize(), color=color, linewidth=2)
-        
+
         if 'ste' in data:
-            if 'pressure' in outcome_type:
-                ste_plot = ste
-            elif outcome_type == 'area':
-                ste_plot = ste
-            else:
-                ste_plot = data['ste']
-            ax.fill_between(time, mean - ste_plot, mean + ste_plot, alpha=0.3, color=color)
+            ax.fill_between(time, mean - ste, mean + ste, alpha=0.3, color=color)
     
     # Labels and formatting
     if title is None:
@@ -1368,11 +1372,12 @@ def _get_variable_label(var_dict: Dict) -> str:
     # Get base label
     if var_type == 'coordinate':
         base_label = COORDINATE_LABELS.get(var_name, var_name)
-        # Check if translation
+        # Data is in raw H5 units (meters for translations, radians for rotations).
+        # Note: plot_coordinate_comparison handles its own unit conversions (m→mm, rad→deg).
         if any(trans in var_name for trans in ['tx', 'ty', 'tz']):
-            unit = ' (mm)'
+            unit = ' (m)'
         else:
-            unit = ' (deg)'
+            unit = ' (rad)'
         return base_label + unit
     
     elif var_type == 'muscle':

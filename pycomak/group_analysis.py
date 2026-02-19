@@ -158,7 +158,7 @@ class GroupJamAnalysis:
             regions: Region indices to keep (default: [4, 5] for medial/lateral tibia)
             contact_outcomes: Contact outcomes to keep (default: regional pressures, area, force)
             muscle_outcomes: Muscle outcomes to keep (default: ['actuation']).
-                           Set to None to keep all muscle outcomes.
+                           Set to None to use default (['actuation']). Pass filter_data=False to keep all outcomes.
             ligament_outcomes: Ligament outcomes to keep (default: None = keep all).
             
         Returns:
@@ -272,14 +272,11 @@ class GroupJamAnalysis:
             'h5_file': h5_file
         }
         
-        self.groups[group]['subjects'].append(subject_info)
-        self.groups[group]['subject_ids'].append(f"{subject_id}_{side}")
-        
-        # Run JAM analysis
+        # Run JAM analysis FIRST, only append metadata after success
         if run_jam:
             jam = JamAnalysis()
             jam.jam_analysis([h5_file])
-            
+
             # Apply filtering to reduce memory usage
             if filter_data:
                 self._filter_jam_data(
@@ -295,8 +292,15 @@ class GroupJamAnalysis:
             # Validate structural consistency against existing subjects
             self._validate_jam_consistency(jam, group)
 
+            # Only append AFTER all of the above succeeded
+            self.groups[group]['subjects'].append(subject_info)
+            self.groups[group]['subject_ids'].append(f"{subject_id}_{side}")
             self.groups[group]['jam_list'].append(jam)
-        
+        else:
+            # No JAM, still append metadata
+            self.groups[group]['subjects'].append(subject_info)
+            self.groups[group]['subject_ids'].append(f"{subject_id}_{side}")
+
         return True
 
     def _validate_jam_consistency(self, new_jam: 'JamAnalysis', group: str):
@@ -526,14 +530,14 @@ class GroupJamAnalysis:
                 
                 constraint_funcs = extract_opensim_constraint_functions(constraint_file)
                 
-                # Initialize storage on first subject
-                if subject_idx == 0:
+                # Initialize storage on first successfully loaded subject
+                if 'secondary_constraints' not in group_dict:
                     group_dict['secondary_constraints'] = {}
                     for key in constraint_funcs.keys():
                         length = len(constraint_funcs[key]['X'])
                         group_dict['secondary_constraints'][key] = {
                             'X': np.rad2deg(constraint_funcs[key]['X']),
-                            'Y': np.zeros((len(group_dict['subjects']), length))
+                            'Y': np.full((len(group_dict['subjects']), length), np.nan)
                         }
                 
                 # Store data
@@ -634,6 +638,8 @@ class GroupJamAnalysis:
                 }
 
         if group is not None:
+            if group not in results:
+                raise KeyError(f"Group '{group}' has no loaded JAM data (0 subjects with JAM).")
             return results[group]
         return results
 
@@ -698,6 +704,8 @@ class GroupJamAnalysis:
                 }
 
         if group is not None:
+            if group not in results:
+                raise KeyError(f"Group '{group}' has no loaded JAM data (0 subjects with JAM).")
             return results[group]
         return results
 
@@ -777,9 +785,11 @@ class GroupJamAnalysis:
                 }
         
         if group is not None:
+            if group not in results:
+                raise KeyError(f"Group '{group}' has no loaded JAM data (0 subjects with JAM).")
             return results[group]
         return results
-    
+
     def get_contact_force_data(
         self,
         contact_type: str = 'tf_contact',
@@ -831,6 +841,8 @@ class GroupJamAnalysis:
                     return np.squeeze(d[:, axis])
                 elif axis == 'norm':
                     return np.squeeze(np.linalg.norm(d, axis=1))
+                else:
+                    raise ValueError(f"Unrecognized axis: {axis!r}. Use int (0/1/2) or 'norm'.")
 
             for i, jam in enumerate(jam_list):
                 data[i, :] = self._extract_subject_value(
@@ -852,9 +864,11 @@ class GroupJamAnalysis:
                 }
         
         if group is not None:
+            if group not in results:
+                raise KeyError(f"Group '{group}' has no loaded JAM data (0 subjects with JAM).")
             return results[group]
         return results
-    
+
     def get_regional_contact_data(
         self,
         region: int,
@@ -919,6 +933,8 @@ class GroupJamAnalysis:
                     d = d[:, axis]
                 elif axis == 'norm':
                     d = np.linalg.norm(d, axis=1)
+                elif axis not in ('pressure', 'area'):
+                    raise ValueError(f"Unrecognized axis: {axis!r}. Use int (0/1/2), 'norm', 'pressure', or 'area'.")
                 return np.squeeze(d)
 
             for i, jam in enumerate(jam_list):
@@ -941,9 +957,11 @@ class GroupJamAnalysis:
                 }
         
         if group is not None:
+            if group not in results:
+                raise KeyError(f"Group '{group}' has no loaded JAM data (0 subjects with JAM).")
             return results[group]
         return results
-    
+
     def get_summary_dataframe(self) -> pd.DataFrame:
         """
         Get a summary DataFrame with all subjects and their group assignments.

@@ -225,7 +225,7 @@ patella_optimization_criteria = {
 This creates a simulation that is 0.2s long, with a time
 step of 0.01s. The knee flexes from 0 to 5 degrees, and
 the pelvis is tilted 90 degrees (laying down). The muscle
-activations are linearly increased from 0 to 0.25 over
+activations are linearly increased from 0 to 0.6 over
 the duration of the simulation.
 
 This is used to prescribe kinematics and muscle activations
@@ -252,7 +252,7 @@ forsim_patella_optimization_kinematics = {
 }
 
 # Create muscle activations to prescribe for forsim simulations
-list_musccles = [
+list_muscles = [
     'recfem_r', 'vasint_r', 'vaslat_r', 'vasmed_r',
     'bflh_r', 'bfsh_r', 'semimem_r', 'semiten_r',
     'sart_r', 'gaslat_r', 'gasmed_r'
@@ -262,5 +262,5 @@ max_activation = 0.6
 activation = np.linspace(0, max_activation, len(time_))
 
 forsim_patella_optimization_muscle_activations = {'time': time_}
-for muscle in list_musccles:
+for muscle in list_muscles:
     forsim_patella_optimization_muscle_activations[f'{muscle}_{muscle_parameter}'] = activation

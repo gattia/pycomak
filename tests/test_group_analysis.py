@@ -232,6 +232,13 @@ class TestGetMuscleData:
         assert "time" in data
         assert "n" in data
 
+    def test_no_min_max_in_stats(self, make_jam):
+        """Stats dict should not contain 'min' or 'max' keys."""
+        ga = _build_group_analysis(make_jam, n_subjects=3)
+        data = ga.get_muscle_data("recfem_r", group="healthy", return_individuals=False)
+        assert "min" not in data
+        assert "max" not in data
+
 
 class TestGetLigamentData:
     def test_fiber_summation(self, make_jam):
@@ -264,6 +271,13 @@ class TestGetContactForceData:
         np.testing.assert_array_almost_equal(data[0, :], 1.0)
 
 
+    def test_bad_axis_raises(self, make_jam):
+        """Unrecognized axis should raise ValueError."""
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
+        with pytest.raises(ValueError, match="Unrecognized axis"):
+            ga.get_contact_force_data(axis="pressure", group="healthy", return_individuals=True)
+
+
 class TestGetRegionalContactData:
     def test_pressure_axis(self, make_jam):
         ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
@@ -283,6 +297,16 @@ class TestGetRegionalContactData:
         # Subject 0: regional_force = ones * 0.5 → norm = sqrt(3)*0.5
         expected = np.sqrt(3) * 0.5
         np.testing.assert_array_almost_equal(data[0, :], expected)
+
+
+    def test_regional_bad_axis_raises(self, make_jam):
+        """Unrecognized axis on regional contact data should raise ValueError."""
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
+        with pytest.raises(ValueError, match="Unrecognized axis"):
+            ga.get_regional_contact_data(
+                region=4, outcome="regional_contact_force", axis="invalid",
+                group="healthy", return_individuals=True
+            )
 
 
 class TestNaNDetection:
@@ -312,6 +336,24 @@ class TestNaNDetection:
         with pytest.raises(ValueError, match="NaN/Inf.*subj_1_RIGHT"):
             ga.get_coordinate_data("knee_flex_r", group="healthy")
 
+    def test_ligament_nan_raises(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
+        ga.groups["healthy"]["jam_list"][0].forceset["Blankevoort1991Ligament"]["ACLam1"]["total_force"][3, 0] = np.nan
+        with pytest.raises(ValueError, match="NaN/Inf.*subj_0_RIGHT"):
+            ga.get_ligament_data("ACL", group="healthy")
+
+    def test_contact_force_nan_raises(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
+        ga.groups["healthy"]["jam_list"][1].forceset["Smith2018ArticularContactForce"]["tf_contact"]["tibia_cartilage"]["total_contact_force"][0, 0, 0] = np.nan
+        with pytest.raises(ValueError, match="NaN/Inf.*subj_1_RIGHT"):
+            ga.get_contact_force_data(group="healthy")
+
+    def test_regional_contact_nan_raises(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=2, n_timesteps=20)
+        ga.groups["healthy"]["jam_list"][0].forceset["Smith2018ArticularContactForce"]["tf_contact"]["tibia_cartilage"][4]["regional_max_pressure"][5, 0] = np.nan
+        with pytest.raises(ValueError, match="NaN/Inf.*subj_0_RIGHT"):
+            ga.get_regional_contact_data(region=4, outcome="regional_max_pressure", axis="pressure", group="healthy")
+
     def test_clean_data_no_error(self, make_jam):
         ga = _build_group_analysis(make_jam, n_subjects=3, n_timesteps=20)
         # Should not raise
@@ -321,6 +363,35 @@ class TestNaNDetection:
 # =========================================================================
 # remove_subjects
 # =========================================================================
+
+
+class TestEmptyJamList:
+    """get_*_data should raise KeyError with clear message when group has no JAM data."""
+
+    def test_coordinate_data_empty_group_raises(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=0, group="empty")
+        with pytest.raises(KeyError, match="no loaded JAM data"):
+            ga.get_coordinate_data("knee_flex_r", group="empty")
+
+    def test_muscle_data_empty_group_raises(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=0, group="empty")
+        with pytest.raises(KeyError, match="no loaded JAM data"):
+            ga.get_muscle_data("recfem_r", group="empty")
+
+    def test_ligament_data_empty_group_raises(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=0, group="empty")
+        with pytest.raises(KeyError, match="no loaded JAM data"):
+            ga.get_ligament_data("ACL", group="empty")
+
+    def test_contact_force_data_empty_group_raises(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=0, group="empty")
+        with pytest.raises(KeyError, match="no loaded JAM data"):
+            ga.get_contact_force_data(group="empty")
+
+    def test_regional_contact_data_empty_group_raises(self, make_jam):
+        ga = _build_group_analysis(make_jam, n_subjects=0, group="empty")
+        with pytest.raises(KeyError, match="no loaded JAM data"):
+            ga.get_regional_contact_data(region=4, group="empty")
 
 
 class TestRemoveSubjects:
@@ -928,6 +999,30 @@ class TestAddSubject:
         # Only 'actuation' muscle outcome should remain
         assert "actuation" in jam.forceset["Muscle"]["recfem_r"]
         assert "activation" not in jam.forceset["Muscle"]["recfem_r"]
+
+    def test_failed_jam_does_not_corrupt_lists(self, create_h5, tmp_path):
+        """If second subject fails validation, lists should remain in sync."""
+        h5_a = self._make_h5(create_h5)
+        # Create H5 with different structure (extra muscle) to trigger validation error
+        h5_b = create_h5(
+            n_timesteps=50,
+            muscles={"recfem_r": ["actuation"], "vaslat_r": ["actuation"]},
+            ligaments={"ACLam1": ["total_force"]},
+            coordinates=["knee_flex_r"],
+            contacts={"tf_contact": {"tibia_cartilage": 6}},
+            filename="mismatched.h5",
+        )
+        ga = GroupJamAnalysis(str(tmp_path), timepoint="")
+        ga.add_subject("s0", "RIGHT", "d0", group="test", h5_file_path=str(h5_a))
+
+        # Second subject has mismatched structure → should fail validation
+        with pytest.raises(ValueError):
+            ga.add_subject("s1", "LEFT", "d1", group="test", h5_file_path=str(h5_b))
+
+        # All three lists should still have length 1 (only first subject)
+        assert len(ga.groups["test"]["subjects"]) == 1
+        assert len(ga.groups["test"]["subject_ids"]) == 1
+        assert len(ga.groups["test"]["jam_list"]) == 1
 
     def test_add_two_subjects_same_group(self, create_h5, tmp_path):
         h5_a = self._make_h5(create_h5, filename="a.h5")

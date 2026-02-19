@@ -49,12 +49,12 @@ class TestGetVariableLabel:
     def test_coordinate_rotation_label(self):
         label = _get_variable_label({"type": "coordinate", "name": "knee_flex_r"})
         assert "Flexion" in label
-        assert "(deg)" in label
+        assert "(rad)" in label
 
     def test_coordinate_translation_label(self):
         label = _get_variable_label({"type": "coordinate", "name": "knee_tx_r"})
         assert "Translation" in label
-        assert "(mm)" in label
+        assert "(m)" in label
 
     def test_unknown_type_returns_name(self):
         label = _get_variable_label({"type": "unknown", "name": "my_var"})

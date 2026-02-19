@@ -61,13 +61,16 @@ def modifyCoordinates(model_update, ik_result_dir, force_length_dict):
 
         joint_upd = model_update.getJointSet().get(joint_name)
 
-        if joint_upd.numCoordinates() == 1:
-            coordinate_index = 0
-        else:
-            for j in range(0,joint_upd.numCoordinates()):
+        coordinate_index = 0
+        if joint_upd.numCoordinates() > 1:
+            matched = False
+            for j in range(joint_upd.numCoordinates()):
                 if joint_upd.get_coordinates(j).getSpeedName().split('/')[0] == coord_names[i]:
                     coordinate_index = j
+                    matched = True
                     break
+            if not matched:
+                print(f"Warning: No matching coordinate found for {coord_names[i]}")
         if coord_values[i] < joint_upd.get_coordinates(coordinate_index).getRangeMin():
             joint_upd.get_coordinates(coordinate_index).setDefaultValue(joint_upd.get_coordinates(coordinate_index).getRangeMin())
        

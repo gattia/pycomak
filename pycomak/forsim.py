@@ -109,7 +109,6 @@ SECONDARY_COORD_CRITERIA = {
 def create_save_sto(
     dict_data,
     path_save,
-    convert_to_radians=False,
 ):
     """
     Creates an OpenSim TimeSeriesTable from a dictionary of data and saves it as a .sto file.
@@ -119,8 +118,6 @@ def create_save_sto(
             1D numpy arrays of data. Must include a 'time' key with the time vector.
         path_save (str): The full path (including filename) to save the .sto file.
             Must end with '.sto'.
-        convert_to_radians (bool, optional): Whether to convert angular coordinates from degrees to radians.
-            Defaults to False.
 
     Raises:
         AssertionError: If 'time' key is missing in `dict_data` or if `path_save`
@@ -139,10 +136,6 @@ def create_save_sto(
         if key == 'time':
             continue
         else:
-            # if convert_to_radians:
-            #     data[:, idx] = np.deg2rad(array)
-            # else:
-            
             data[:, idx] = array
                 
             labels.append(key)
@@ -309,7 +302,7 @@ def analyze_criteria(jam, criteria_dict, criteria_type, passed=True):
     For a given `criteria_type` ('ligaments' or 'coords'), this function retrieves
     the relevant data from the `jam` object. It then checks if the data's peak-to-peak
     range, maximum value, or minimum value exceed thresholds defined in `criteria_dict`.
-    Results (ptp, min, max) are added to the `criteria_dict`.
+    Results (ptp, min, max) are added to a copy of `criteria_dict` (the original is not mutated).
 
     Args:
         jam (JamAnalysis): An instance of JamAnalysis containing the simulation data.
@@ -321,8 +314,8 @@ def analyze_criteria(jam, criteria_dict, criteria_type, passed=True):
             this will be set to False. Defaults to True.
 
     Returns:
-        tuple: 
-            - dict: The updated `criteria_dict` with 'ptp_', 'min_', and 'max_' values added for each item.
+        tuple:
+            - dict: A copy of `criteria_dict` with 'ptp_', 'min_', and 'max_' values added for each item.
             - bool: The updated `passed` status.
     """
     if jam.num_files > 1:
@@ -331,13 +324,19 @@ def analyze_criteria(jam, criteria_dict, criteria_type, passed=True):
             f"Evaluate each file separately."
         )
 
+    criteria_dict = copy.deepcopy(criteria_dict)
+
     for name, criteria in criteria_dict[criteria_type].items():
         if criteria_type == 'ligaments':
             data = get_total_ligament_force(jam, ligament_name=name)
         elif criteria_type == 'coords':
             data = jam.coordinateset[name]['value']
-            # data = get_coordinate_data(jam, coord_name=name)  # Assuming a function to get coordinate data
-        
+
+        if np.any(np.isnan(data)) or np.any(np.isinf(data)):
+            print(f'{name} - Data contains NaN/Inf values')
+            passed = False
+            continue
+
         ptp_ = np.ptp(data)
         min_ = np.min(data)
         max_ = np.max(data)
@@ -401,6 +400,7 @@ def jam_evaluation(
     cols = 3
     rows = int(np.ceil(len(list_kinematics_plot)/cols))
     fig, ax = plt.subplots(rows, cols, figsize=(cols*16, rows*12))
+    ax = np.atleast_2d(ax)
     for idx, kinematic_ in enumerate(list_kinematics_plot):
         row_ = idx // cols
         col_ = idx % cols
@@ -425,6 +425,7 @@ def jam_evaluation(
     cols = 3
     rows = int(np.ceil(len(list_ligaments_plot)/cols))
     fig, ax = plt.subplots(rows, cols, figsize=(cols*16, rows*12))
+    ax = np.atleast_2d(ax)
     for idx, ligament_ in enumerate(list_ligaments_plot):
         row_ = idx // cols
         col_ = idx % cols
@@ -536,7 +537,6 @@ class COMAKforsim:
         create_save_sto(
             dict_kinematics,
             os.path.join(folder_save_results, 'kinematics.sto'),
-            convert_to_radians=True
         )
         
         create_save_sto(
@@ -545,6 +545,7 @@ class COMAKforsim:
         )
         
         self.forsim_completed = False
+        self.failure_reason = None
         self._evaluation_results = None
     
     def run_forsim(self, max_forsim_time=None):
@@ -576,12 +577,15 @@ class COMAKforsim:
             run_with_timeout(run_forsim, self.max_forsim_time, **kwargs)
             print('Forsim Tool completed successfully')
             self.forsim_completed = True
+            self.failure_reason = None
             return True
         except TimeoutError:
             print('Forsim Tool timed out... took longer than allowed time')
+            self.failure_reason = 'forsim_timeout'
             return False
         except RuntimeError as e:
             print(f'Forsim Tool crashed: {e}')
+            self.failure_reason = 'forsim_crash'
             return False
     
     def run_joint_mechanics_tool(self):

@@ -60,6 +60,12 @@ class TestJamAnalysisEntryValidation:
         jam.jam_analysis([str(h5)], names=["subject_A"])
         assert jam.names == ["subject_A"]
 
+    def test_empty_file_list_raises(self):
+        """Passing an empty list should raise ValueError."""
+        jam = JamAnalysis()
+        with pytest.raises(ValueError, match="empty"):
+            jam.jam_analysis([])
+
     def test_accepts_tuple_input(self, create_h5):
         h5 = create_h5(muscles={"recfem_r": ["actuation"]})
         jam = JamAnalysis()
