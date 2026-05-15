@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import opensim as osim
 import glob
@@ -211,8 +212,15 @@ class COMAKInverseKinematics(COMAKBASE):
         self.ik_accuracy = ik_accuracy
         self.prescribed_coordinates = prescribed_coordinates
         self.primary_coordinates = primary_coordinates
-        self.secondary_coordinates = secondary_coordinates
-        
+        # Keep the secondary-coordinate list model-driven: drop any coordinate
+        # the base model does not actually have. A model built without the
+        # menisci (or any optional body) then contributes fewer secondary
+        # coordinates instead of failing when a hardcoded coordinate path
+        # cannot be resolved. No-op when the model contains every coordinate.
+        self.secondary_coordinates = self._filter_coordinates_to_model(
+            secondary_coordinates, base_model_path
+        )
+
         # define file names to save results
         
         self.save_xml_path = os.path.join(self.inputs_dir, 'comak_inverse_kinematics_settings.xml')
@@ -317,23 +325,46 @@ class COMAKInverseKinematics(COMAKBASE):
         self.comak_ik.set_IKTaskSet(ik_task_set)
         self.comak_ik.printToXML(self.save_xml_path)
     
+    @staticmethod
+    def _filter_coordinates_to_model(coordinate_dict, model_path):
+        """Drop secondary-coordinate entries whose coordinate is absent from the model.
+
+        Reads the model XML and keeps only entries whose coordinate name (the
+        last path component of ``spec['coordinate']``) is defined in the model.
+        No-op when every coordinate is present, or when the model file cannot
+        be read.
+        """
+        if not model_path or not os.path.exists(model_path):
+            return coordinate_dict
+        with open(model_path) as f:
+            model_xml = f.read()
+        present = set(re.findall(r'<Coordinate\s+name="([^"]+)"', model_xml))
+        filtered = {
+            name: spec for name, spec in coordinate_dict.items()
+            if spec['coordinate'].rsplit('/', 1)[-1] in present
+        }
+        dropped = [n for n in coordinate_dict if n not in filtered]
+        if dropped:
+            print(f"[comak_ik] secondary coordinates not in model, skipping: {dropped}")
+        return filtered
+
     def update_ligament_reference_strain(self, ligament_name: str, new_reference_strain: float):
         """
         Update the reference strain for a specific ligament in ref_force_info.
-        
+
         Args:
             ligament_name (str): Name of the ligament to update
             new_reference_strain (float): New reference strain value
-            
+
         Raises:
-            KeyError: If ligament_name is not found in ref_force_info
             ValueError: If the specified force is not a ligament
         """
         if ligament_name not in self.ref_force_info:
-            available_ligaments = [name for name, info in self.ref_force_info.items() 
-                                 if info.get('class') == 'Blankevoort1991Ligament']
-            raise KeyError(f"Ligament '{ligament_name}' not found in ref_force_info. "
-                          f"Available ligaments: {available_ligaments}")
+            # Ligament not in the model (e.g. a meniscus-free model fed the
+            # standard meniscus-inclusive strain dict). Skip rather than fail.
+            print(f"[comak_ik] reference-strain ligament '{ligament_name}' "
+                  f"not in model, skipping")
+            return
         
         if self.ref_force_info[ligament_name]['class'] != 'Blankevoort1991Ligament':
             raise ValueError(f"'{ligament_name}' is not a ligament (class: {self.ref_force_info[ligament_name]['class']})")
