@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import opensim as osim
 from pycomak import COMAKBASE
@@ -6,6 +7,29 @@ from pycomak import COMAKBASE
 from pycomak.defaults import prescribed_coordinates as PRESCRIBED_COORDINATES
 from pycomak.defaults import primary_coordinates as PRIMARY_COORDINATES
 from pycomak.defaults import secondary_coordinates as SECONDARY_COORDINATES
+
+
+def _filter_coordinates_to_model(coordinate_dict, model_path):
+    """Drop secondary-coordinate entries whose coordinate is absent from the model.
+
+    Keeps the COMAK secondary-coordinate list model-driven: a model built
+    without the menisci (or any optional body) simply contributes fewer
+    secondary coordinates instead of failing when a hardcoded coordinate path
+    cannot be resolved. No-op when every coordinate is present, or when the
+    model file cannot be read.
+    """
+    if not model_path or not os.path.exists(model_path):
+        return coordinate_dict
+    with open(model_path) as f:
+        present = set(re.findall(r'<Coordinate\s+name="([^"]+)"', f.read()))
+    filtered = {
+        name: spec for name, spec in coordinate_dict.items()
+        if spec['coordinate'].rsplit('/', 1)[-1] in present
+    }
+    dropped = [n for n in coordinate_dict if n not in filtered]
+    if dropped:
+        print(f"[comaktool] secondary coordinates not in model, skipping: {dropped}")
+    return filtered
 
 
 def get_muscle_weights(dict_muscle_weights, model):
@@ -188,6 +212,9 @@ class COMAK(COMAKBASE):
 
         for coord_number, path in primary_coordinates.items():
             self.comak.set_primary_coordinates(int(coord_number), path)
+
+        secondary_coordinates = _filter_coordinates_to_model(
+            secondary_coordinates, model_path)
 
         secondary_coord_set = osim.COMAKSecondaryCoordinateSet()
         secondary_coord = osim.COMAKSecondaryCoordinate()

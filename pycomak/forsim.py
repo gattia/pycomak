@@ -1,10 +1,33 @@
 import numpy as np
 import opensim as osim
 import os
+import re
 import copy
 import matplotlib.pyplot as plt
 from pycomak.utils import run_with_timeout
 from pycomak.jam_analysis import JamAnalysis
+
+
+def _filter_paths_to_model(paths, model_path, xml_tag):
+    """Keep only component paths whose final name component exists in the model.
+
+    Scans the .osim XML for ``<xml_tag name="...">`` entries. Keeps the
+    unconstrained-coordinate / attached-geometry lists model-driven so a model
+    built without the menisci (or any optional body) simply contributes fewer
+    entries instead of failing when a hardcoded path cannot be resolved.
+    No-op when every path resolves, or when the model file cannot be read.
+    """
+    if not isinstance(paths, (list, tuple)):
+        return paths
+    if not model_path or not os.path.exists(model_path):
+        return list(paths)
+    with open(model_path) as f:
+        present = set(re.findall(rf'<{xml_tag}\s+name="([^"]+)"', f.read()))
+    kept = [p for p in paths if p.rsplit('/', 1)[-1] in present]
+    dropped = [p for p in paths if p not in kept]
+    if dropped:
+        print(f"[forsim] {xml_tag} paths not in model, skipping: {dropped}")
+    return kept
 
 
 UNCONSTRAINED_COORDINATES = [
@@ -202,6 +225,8 @@ def run_forsim(
     forsim.set_use_tendon_compliance(use_tendon_compliance)
     forsim.set_use_muscle_physiology(use_muscle_physiology)
     
+    unconstrained_coordinates = _filter_paths_to_model(
+        unconstrained_coordinates, path_model, 'Coordinate')
     for idx, coord in enumerate(unconstrained_coordinates):
         forsim.set_unconstrained_coordinates(idx, coord)
     
@@ -257,6 +282,8 @@ def run_joint_mechanics_tool(
     jnt_mech.set_ligaments(0,'all')
     jnt_mech.set_muscles(0,'all')
     jnt_mech.set_muscle_outputs(0,'all')
+    attached_geometry_bodies = _filter_paths_to_model(
+        attached_geometry_bodies, path_model, 'Body')
     for idx, body in enumerate(attached_geometry_bodies):
         jnt_mech.set_attached_geometry_bodies(idx, body)
     jnt_mech.set_output_orientation_frame('ground')
@@ -395,7 +422,12 @@ def jam_evaluation(
         
     jam = JamAnalysis()
     jam.jam_analysis([path_h5_file,])
-    
+
+    # Keep the plotted coordinate list model-driven: drop any coordinate the
+    # model (hence the h5) does not have, e.g. the meniscus DOFs on a
+    # meniscus-free model.
+    list_kinematics_plot = [k for k in list_kinematics_plot if k in jam.coordinateset]
+
     # create kinematics plot & save
     cols = 3
     rows = int(np.ceil(len(list_kinematics_plot)/cols))
