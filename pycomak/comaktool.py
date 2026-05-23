@@ -105,6 +105,9 @@ class COMAK(COMAKBASE):
         max_iterations=25,
         udot_tolerance=1,
         udot_worse_case_tolerance=50,
+        convergence_criterion='udot',
+        generalized_force_tolerance=1.0,
+        generalized_force_worse_case_tolerance=50.0,
         unit_udot_epsilon=1e-6,
         optimization_scale_delta_coord=1,
         ipopt_diagnostics_level=3,
@@ -149,6 +152,16 @@ class COMAK(COMAKBASE):
                 Defaults to 1.
             udot_worse_case_tolerance (float, optional): Worst-case tolerance for udot.
                 Defaults to 50.
+            convergence_criterion (str, optional): COMAK convergence criterion.
+                'udot' (default) reproduces the historical behavior exactly.
+                'generalized_force' gates on the diagonal-scaled residual
+                M_kk*|Delta udot| (Lever 4 — coordinate-fair, moment-scaled).
+            generalized_force_tolerance (float, optional): Per-coordinate
+                tolerance (N or N*m) used when convergence_criterion is
+                'generalized_force'. Defaults to 1.0.
+            generalized_force_worse_case_tolerance (float, optional):
+                Worst-case per-coordinate tolerance (N or N*m) used when
+                convergence_criterion is 'generalized_force'. Defaults to 50.0.
             unit_udot_epsilon (float, optional): Epsilon for unit udot. Defaults to 1e-6.
             optimization_scale_delta_coord (float, optional): Scaling factor for delta coordinates
                 in optimization. Defaults to 1.
@@ -238,6 +251,13 @@ class COMAK(COMAKBASE):
         self.comak.set_max_iterations(max_iterations)
         self.comak.set_udot_tolerance(udot_tolerance)
         self.comak.set_udot_worse_case_tolerance(udot_worse_case_tolerance)
+        # Lever 4 — coordinate-specific, moment-scaled convergence criterion.
+        # 'udot' reproduces the historical behaviour exactly; 'generalized_force'
+        # gates on the diagonal-scaled residual M_kk*|Delta udot|.
+        self.comak.set_convergence_criterion(convergence_criterion)
+        self.comak.set_generalized_force_tolerance(generalized_force_tolerance)
+        self.comak.set_generalized_force_worse_case_tolerance(
+            generalized_force_worse_case_tolerance)
         self.comak.set_unit_udot_epsilon(unit_udot_epsilon)
         self.comak.set_optimization_scale_delta_coord(optimization_scale_delta_coord)
         self.comak.set_ipopt_diagnostics_level(ipopt_diagnostics_level)
@@ -275,6 +295,9 @@ class COMAK(COMAKBASE):
             'max_iterations': max_iterations,
             'udot_tolerance': udot_tolerance,
             'udot_worse_case_tolerance': udot_worse_case_tolerance,
+            'convergence_criterion': convergence_criterion,
+            'generalized_force_tolerance': generalized_force_tolerance,
+            'generalized_force_worse_case_tolerance': generalized_force_worse_case_tolerance,
             'unit_udot_epsilon': unit_udot_epsilon,
             'optimization_scale_delta_coord': optimization_scale_delta_coord,
             'ipopt_diagnostics_level': ipopt_diagnostics_level,
