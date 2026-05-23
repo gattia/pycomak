@@ -56,9 +56,16 @@ UNCONSTRAINED_COORDINATES = [
     '/jointset/meniscus_lateral_r/meniscus_lateral_tz_r',
 ]
 
+# Welded COMAK models carry the knee bone/cartilage geometry on the placeholder
+# sub-bodies (femur_distal_r / tibia_proximal_r); Stage-Z weld-collapsed models
+# carry it on femur_r / tibia_r instead. Both names are listed -- forsim filters
+# this list to whatever bodies the loaded model actually contains (see
+# _filter_paths_to_model), so each topology contributes the right entries.
 ATTACHED_GEOMETRY_BODIES = [
     '/bodyset/femur_distal_r',
+    '/bodyset/femur_r',
     '/bodyset/tibia_proximal_r',
+    '/bodyset/tibia_r',
     '/bodyset/patella_r',
     '/bodyset/meniscus_medial_r',
     '/bodyset/meniscus_lateral_r',
