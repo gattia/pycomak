@@ -242,7 +242,21 @@ def run_forsim(
     forsim.printToXML(os.path.join(folder_save_results, 'forsim_settings.xml'))
     
     print('Running Forsim Tool...')
-    forsim.run()
+    # ForsimTool::run() catches its own exceptions -- integrator divergence,
+    # missing inputs -- logs them, and returns false rather than raising
+    # (ForsimTool.cpp:97,287). Discarding that boolean reports a failed
+    # simulation as a success, which silently disables the caller's recovery:
+    # KneeOptimizer.optimize_patella_location() has an `if not forsim_success`
+    # branch that nudges the patella down 1 mm and retries up to max_updates
+    # times, and it never fired. The failure instead surfaced much later as an
+    # unrelated matplotlib error while plotting an h5 that was never written.
+    if not forsim.run():
+        raise RuntimeError(
+            'ForsimTool::run() reported failure; no _states.sto was written. '
+            'See the solver log in this results directory for the underlying '
+            'exception (e.g. "Integrator step failed at time ...").'
+        )
+
 
 def run_joint_mechanics_tool(
     path_model,
@@ -302,7 +316,16 @@ def run_joint_mechanics_tool(
     jnt_mech.printToXML(os.path.join(folder_save_results, "joint_mechanics_settings.xml"))
     
     print('Running Joint Mechanics Tool...')
-    jnt_mech.run()
+    # Same contract as ForsimTool: run() catches, logs and returns false. If the
+    # forward sim produced no _states.sto this is where that first becomes
+    # visible, so surface it here rather than letting a downstream reader fail
+    # on an h5 that does not exist.
+    if not jnt_mech.run():
+        raise RuntimeError(
+            'JointMechanicsTool::run() reported failure; no h5 was written. '
+            'The usual cause is a missing or truncated _states.sto from the '
+            'preceding forward simulation. See the solver log.'
+        )
 
 def get_total_ligament_force(jam, ligament_name):
     """
@@ -434,6 +457,21 @@ def jam_evaluation(
     # model (hence the h5) does not have, e.g. the meniscus DOFs on a
     # meniscus-free model.
     list_kinematics_plot = [k for k in list_kinematics_plot if k in jam.coordinateset]
+
+    # An empty list here means the h5 carried none of the expected coordinates,
+    # which in practice means it was never written -- the upstream simulation
+    # failed. Say so, rather than passing rows=0 to plt.subplots() and dying
+    # with "Number of rows must be a positive integer, not 0" several frames
+    # away from the actual cause. This must still RAISE: the caller treats a
+    # failed evaluation as a reason to retry or fail the subject, and silently
+    # skipping the plot would let a subject whose simulation never ran be
+    # marked complete.
+    if not list_kinematics_plot:
+        raise RuntimeError(
+            f'No secondary coordinates found in {path_h5_file!r} -- the joint '
+            f'mechanics h5 is missing or empty, so the preceding simulation did '
+            f'not produce usable output. Nothing to evaluate.'
+        )
 
     # create kinematics plot & save
     cols = 3
